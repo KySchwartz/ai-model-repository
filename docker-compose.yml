@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=ai_repo
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+
+  backend:
+    build: ./backend
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+  ai_suite:
+    build: ./ai_suite
+    command: uvicorn main:app --host 0.0.0.0 --port 8001
+    volumes:
+      - ./ai_suite:/app
+    ports:
+      - "8001:8001"
