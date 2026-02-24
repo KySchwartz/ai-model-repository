@@ -12,15 +12,15 @@ def home(request):
 
 class User(AbstractUser):
 
-ROLE_CHOICES = (
+    ROLE_CHOICES = (
 
-    ('consumer', 'Consumer'),
+        ('consumer', 'Consumer'),
 
-    ('developer', 'Developer'),
+        ('developer', 'Developer'),
 
-    ('admin', 'Admin'),
+        ('admin', 'Admin'),
 
-)
+    )
 
 role = models.CharField(max_length=15, choices=ROLE_CHOICES, default='consumer')
 
