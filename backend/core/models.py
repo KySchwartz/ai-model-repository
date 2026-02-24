@@ -1,13 +1,6 @@
-Python
-
 from django.contrib.auth.models import AbstractUser
 
 from django.db import models
-
-from django.shortcuts import render
-
-def home(request):
-    return render(request, "home.html")
 
 
 class User(AbstractUser):
@@ -22,9 +15,9 @@ class User(AbstractUser):
 
     )
 
-role = models.CharField(max_length=15, choices=ROLE_CHOICES, default='consumer')
+    role = models.CharField(max_length=15, choices=ROLE_CHOICES, default='consumer')
 
-credit_balance = models.IntegerField(default=10) # SRS Requirement for monetization
+    credit_balance = models.IntegerField(default=10) # SRS Requirement for monetization
 
 class AIModel(models.Model):
 
