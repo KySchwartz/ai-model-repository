@@ -1,0 +1,11 @@
+<h2>Available Models</h2> 
+ 
+{% for model in models %} 
+   <div> 
+       <h3>{{ model.title }}</h3> 
+       <p>{{ model.description }}</p> 
+       <p>Uploaded by: {{ model.uploaded_by }}</p> 
+       <a href="{{ model.model_file.url }}">Download</a> 
+   </div> 
+   <hr> 
+{% endfor %} 
