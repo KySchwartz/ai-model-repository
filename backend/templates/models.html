@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Models</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:#101a2f;
+      --panel2:#0f1930;
+      --text:#e8eefc;
+      --muted:#a9b6d3;
+      --border:rgba(255,255,255,.10);
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 16px;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background: radial-gradient(1200px 600px at 20% -10%, rgba(90,140,255,.25), transparent 60%),
+                  radial-gradient(900px 500px at 90% 0%, rgba(160,90,255,.18), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+    }
+    a{ color:inherit; text-decoration:none; }
+    .wrap{
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 18px 60px;
+    }
+    .header{
+      display:flex;
+      gap:16px;
+      justify-content:space-between;
+      align-items:flex-end;
+      margin-bottom: 18px;
+    }
+    .title{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    h1{
+      margin:0;
+      font-size: 28px;
+      letter-spacing: .2px;
+    }
+    .subtitle{
+      margin:0;
+      color:var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .controls{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .search{
+      width:min(420px, 80vw);
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(255,255,255,.04);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+    }
+    .search input{
+      width:100%;
+      border:0;
+      outline:0;
+      background:transparent;
+      color:var(--text);
+      font-size:14px;
+    }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(255,255,255,.04);
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 14px;
+      margin-top: 16px;
+    }
+    .card{
+      grid-column: span 4;
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+      transition: transform .15s ease, border-color .15s ease, background .15s ease;
+      overflow:hidden;
+      position:relative;
+      min-height: 170px;
+    }
+    .card:hover{
+      transform: translateY(-2px);
+      border-color: rgba(255,255,255,.18);
+      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+    }
+    .cardTop{
+      display:flex;
+      justify-content:space-between;
+      gap: 10px;
+      align-items:flex-start;
+      margin-bottom: 10px;
+    }
+    .cardTitle{
+      margin:0;
+      font-size: 16px;
+      line-height: 1.25;
+      letter-spacing: .2px;
+    }
+    .metaRow{
+      display:flex;
+      flex-wrap:wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .badge{
+      font-size: 12px;
+      color: #dbe6ff;
+      padding: 5px 9px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(40,110,255,.12);
+    }
+    .badge.secondary{
+      background: rgba(255,255,255,.06);
+      color: var(--muted);
+    }
+    .desc{
+  margin:0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+
+  /* Standard property (new browsers) */
+  line-clamp: 4;
+
+  /* Required layout rules */
+  display: -webkit-box;
+  display: box;
+
+  /* WebKit fallback */
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+
+  overflow: hidden;
+  min-height: 76px;
+}
+    .cardBottom{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-top: 10px;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      font-size: 13px;
+      cursor:pointer;
+      user-select:none;
+    }
+    .btn:active{ transform: translateY(1px); }
+    .empty{
+      margin-top: 16px;
+      border: 1px dashed rgba(255,255,255,.18);
+      background: rgba(255,255,255,.03);
+      border-radius: var(--radius);
+      padding: 22px;
+      color: var(--muted);
+    }
+    .empty h2{
+      margin: 0 0 6px;
+      color: var(--text);
+      font-size: 16px;
+    }
+    .empty p{ margin:0; }
+
+    /* responsive */
+    @media (max-width: 980px){
+      .card{ grid-column: span 6; }
+    }
+    @media (max-width: 620px){
+      .header{ align-items:flex-start; flex-direction:column; }
+      .controls{ width:100%; }
+      .search{ width:100%; }
+      .card{ grid-column: span 12; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div class="title">
+        <h1>Model Catalog</h1>
+        <p class="subtitle">Browse uploaded models and their descriptions.</p>
+      </div>
+
+      <div class="controls">
+        <div class="search" role="search">
+          <span aria-hidden="true">🔎</span>
+          <input id="modelSearch" type="text" placeholder="Search models (title, description, framework, version)..." />
+        </div>
+        <div class="pill">
+          <span>Count:</span>
+          <strong id="modelCount">0</strong>
+        </div>
+      </div>
+    </div>
+
+    {% if models %}
+      <div class="grid" id="modelGrid">
+        {% for m in models %}
+          <article class="card modelCard"
+                   data-title="{{ m.title|default:''|lower }}"
+                   data-framework="{{ m.framework|default:''|lower }}"
+                   data-version="{{ m.version|default:''|lower }}"
+                   data-desc="{{ m.description|default:''|lower }}">
+            <div class="cardTop">
+              <div>
+                <h3 class="cardTitle">{{ m.title }}</h3>
+                <div class="metaRow">
+                  {% if m.framework %}
+                    <span class="badge">{{ m.framework }}</span>
+                  {% endif %}
+                  {% if m.version %}
+                    <span class="badge secondary">v{{ m.version }}</span>
+                  {% endif %}
+                </div>
+              </div>
+              {% if m.model_file %}
+                <a class="btn" href="{{ m.model_file.url }}" download>
+                  ⬇️ Download
+                </a>
+              {% endif %}
+            </div>
+
+            {% if m.description %}
+              <p class="desc">{{ m.description }}</p>
+            {% else %}
+              <p class="desc"><em>No description provided.</em></p>
+            {% endif %}
+
+            <div class="cardBottom">
+              <span>
+                Uploaded:
+                {% if m.upload_date %}{{ m.upload_date|date:"M d, Y" }}{% else %}—{% endif %}
+              </span>
+              <span>ID: {{ m.id }}</span>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+
+      <script>
+        (function(){
+          const search = document.getElementById("modelSearch");
+          const cards = Array.from(document.querySelectorAll(".modelCard"));
+          const countEl = document.getElementById("modelCount");
+
+          function updateCount() {
+            const visible = cards.filter(c => c.style.display !== "none").length;
+            countEl.textContent = String(visible);
+          }
+
+          function matches(card, q){
+            const text =
+              (card.dataset.title || "") + " " +
+              (card.dataset.desc || "") + " " +
+              (card.dataset.framework || "") + " " +
+              (card.dataset.version || "");
+            return text.includes(q);
+          }
+
+          function filter(){
+            const q = (search.value || "").trim().toLowerCase();
+            cards.forEach(card => {
+              card.style.display = (!q || matches(card, q)) ? "" : "none";
+            });
+            updateCount();
+          }
+
+          search.addEventListener("input", filter);
+          updateCount();
+        })();
+      </script>
+
+    {% else %}
+      <div class="empty">
+        <h2>No models uploaded yet</h2>
+        <p>Upload a model and it will appear here with its title, description, framework, and version.</p>
+      </div>
+    {% endif %}
+  </div>
+</body>
+</html>
