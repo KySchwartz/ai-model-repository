@@ -1,69 +1,7 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>AI Model Repository</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f6f9;
-            text-align: center;
-            margin: 0;
-            padding: 0;
-        }
-        .navbar {
-            background-color: #222;
-            padding: 15px;
-        }
-        .navbar a {
-            color: white;
-            text-decoration: none;
-            margin: 0 15px;
-            font-weight: bold;
-        }
-        .hero {
-            margin-top: 80px;
-        }
-        .btn {
-            display: inline-block;
-            padding: 12px 20px;
-            margin: 15px;
-            background-color: #007BFF;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-        }
-        .btn:hover {
-            background-color: #0056b3;
-        }
-        .footer {
-            margin-top: 100px;
-            padding: 20px;
-            background-color: #222;
-            color: white;
-        }
-    </style>
-</head>
-<body>
-
-    <div class="navbar">
-        <a href="/">Home</a>
-        <a href="/upload/">Upload Model</a>
-        <a href="/models/">Browse Models</a>
-
-        {% if user.is_authenticated %}
-            <form action="{% url 'logout' %}" method="post" style="display: inline;">
-                {% csrf_token %}
-                <button type="submit" style="background: none; border: none; color: white; cursor: pointer; font-weight: bold; font-family: inherit; font-size: inherit; padding: 0; margin: 0 15px;">
-                    Logout
-                </button>
-            </form>
-        {% else %}
-            <a href="{% url 'login' %}">Login</a>
-        {% endif %}
-    </div>
-
+{% extends 'base.html' %}
+{% block content %}
     <div class="hero">
-        {% block content %}
+        
         <h1>🚀 AI Model Repository</h1>
         <p>Upload, manage, and share machine learning models.</p>
 
@@ -73,12 +11,6 @@
         {% else %}
             <a class="btn" href="/login/">Login to Get Started</a>
         {% endif %}
-        {% endblock %}
+        
     </div>
-
-    <div class="footer">
-        <p>© 2026 AI Model Repository | Docker + Django Powered</p>
-    </div>
-
-</body>
-</html>
+{% endblock %}
