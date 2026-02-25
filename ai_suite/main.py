@@ -8,5 +8,8 @@ def read_root():
 
 @app.get("/status")
 def get_status():
-    # This will eventually show if XGBoost/LLM models are loaded
-    return {"status": "ready", "models_loaded": ["XGBoost", "Random Forest"]}
+    return {
+            "status": "online",
+            "capabilities": ["XGBoost", "Random Forest"],
+            "version": "1.0.0"
+        }

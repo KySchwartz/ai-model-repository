@@ -1,7 +1,16 @@
 {% extends 'base.html' %}
 {% block content %}
+    <style>
+        .status-online { color: green; font-weight: bold; }
+        .status-offline { color: red; font-weight: bold; }
+    </style>
+    {% if is_auth %}
+        <p>Welcome back, <strong>{{ user_name }}</strong> ({{ user_role|title }})</p>
+    {% else %}
+        <p>Please log in to manage or download AI models.</p>
+    {% endif %}
     <div class="hero">
-        
+
         <h1>🚀 AI Model Repository</h1>
         <p>Upload, manage, and share machine learning models.</p>
 
@@ -12,5 +21,11 @@
             <a class="btn" href="/login/">Login to Get Started</a>
         {% endif %}
         
+    </div>
+    <div style="margin: 20px 0; padding: 10px; border-radius: 5px; background: #eee; display: inline-block;">
+        <strong>AI Suite Connection Status:</strong> 
+        <span class="{% if 'Online' in ai_status %}status-online{% else %}status-offline{% endif %}">
+            {{ ai_status }}
+        </span>
     </div>
 {% endblock %}

@@ -6,7 +6,7 @@ from .models import User
 class AIModelForm(forms.ModelForm): 
    class Meta: 
        model = AIModel 
-       fields = ["title", "description", "model_file"] 
+       fields = ["title", "description", "framework", "version", "model_file"] 
  
 class CustomSignupForm(UserCreationForm):
     class Meta(UserCreationForm.Meta):
