@@ -51,13 +51,19 @@
         <a href="/models/">Browse Models</a>
 
         {% if user.is_authenticated %}
-            <a href="/logout/">Logout</a>
+            <form action="{% url 'logout' %}" method="post" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" style="background: none; border: none; color: white; cursor: pointer; font-weight: bold; font-family: inherit; font-size: inherit; padding: 0; margin: 0 15px;">
+                    Logout
+                </button>
+            </form>
         {% else %}
-            <a href="/login/">Login</a>
+            <a href="{% url 'login' %}">Login</a>
         {% endif %}
     </div>
 
     <div class="hero">
+        {% block content %}
         <h1>🚀 AI Model Repository</h1>
         <p>Upload, manage, and share machine learning models.</p>
 
@@ -67,6 +73,7 @@
         {% else %}
             <a class="btn" href="/login/">Login to Get Started</a>
         {% endif %}
+        {% endblock %}
     </div>
 
     <div class="footer">

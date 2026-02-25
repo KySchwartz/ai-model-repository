@@ -1,0 +1,33 @@
+{% extends 'home.html' %}
+
+{% block content %}
+<div style="max-width: 400px; margin: 50px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); color: #222;">
+    <h2 style="text-align: center; color: #007BFF;">Join the Repository</h2>
+    <p style="text-align: center; color: #666; font-size: 14px;">Select your role to get started.</p>
+    
+    <form method="post" style="display: flex; flex-direction: column; gap: 15px;">
+        {% csrf_token %}
+        
+        {% for field in form %}
+            <div class="form-group">
+                <label style="font-weight: bold; display: block; margin-bottom: 5px;">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}
+                    <small style="display: block; color: #888; font-size: 12px; margin-top: 4px;">{{ field.help_text }}</small>
+                {% endif %}
+                {% for error in field.errors %}
+                    <p style="color: red; font-size: 12px; margin: 0;">{{ error }}</p>
+                {% endfor %}
+            </div>
+        {% endfor %}
+        
+        <button type="submit" style="background-color: #007BFF; color: white; padding: 12px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 10px;">
+            Create Account
+        </button>
+    </form>
+    
+    <p style="text-align: center; margin-top: 20px; font-size: 14px;">
+        Already have an account? <a href="{% url 'login' %}" style="color: #007BFF; text-decoration: none;">Login here</a>
+    </p>
+</div>
+{% endblock %}

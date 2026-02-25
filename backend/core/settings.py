@@ -125,8 +125,10 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'core.User'
-
-import os 
  
 MEDIA_URL = "/media/" 
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
+# Redirect users to the home page after login and logout
+LOGIN_REDIRECT_URL = 'home'
+LOGOUT_REDIRECT_URL = 'home'

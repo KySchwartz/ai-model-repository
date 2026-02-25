@@ -27,13 +27,14 @@ urlpatterns = [
     # Models Path 
     path("models/", views.model_list, name="model_list"),
 
+    # Upload Path
+    path("upload/", views.upload_model, name="upload_model"), 
+
     # Authentication Paths
+    path("signup/", views.signup_view, name="signup"),
     path('login/', auth_views.LoginView.as_view(template_name='login.html'), name='login'), 
     path('logout/', auth_views.LogoutView.as_view(), name='logout'), 
 ]
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) 
-
-path("upload/", views.upload_model, name="upload_model"), 
-
 

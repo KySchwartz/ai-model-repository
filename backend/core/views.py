@@ -1,7 +1,8 @@
 from django.shortcuts import render
-<<<<<<< HEAD
 from django.contrib.auth.decorators import login_required 
 from django.shortcuts import render, redirect 
+from .models import AIModel
+from .forms import CustomSignupForm
 from .forms import AIModelForm 
  
 @login_required 
@@ -10,19 +11,24 @@ def upload_model(request):
        form = AIModelForm(request.POST, request.FILES) 
        if form.is_valid(): 
            model = form.save(commit=False) 
-           model.uploaded_by = request.user 
+           model.developer = request.user 
            model.save() 
            return redirect("model_list") 
    else: 
        form = AIModelForm() 
  
    return render(request, "upload.html", {"form": form}) 
+
+def signup_view(request):
+    if request.method == 'POST':
+        form = CustomSignupForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('login') # Redirect to login page after success
+    else:
+        form = CustomSignupForm()
+    return render(request, 'signup.html', {'form': form})
  
-=======
-from .models import AIModel
-
->>>>>>> f10e236e334acea274c7c3249569855fa4d8259b
-
 def home(request):
     return render(request, "home.html")
 

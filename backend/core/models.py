@@ -1,7 +1,5 @@
 from django.contrib.auth.models import AbstractUser
-
 from django.db import models
-
 
 class User(AbstractUser):
 
@@ -34,12 +32,4 @@ class AIModel(models.Model):
     model_file = models.FileField(upload_to='models/')
 
     upload_date = models.DateTimeField(auto_now_add=True)
-
-from .models import AIModel 
- 
-def model_list(request): 
-   models = AIModel.objects.all().order_by("-created_at") 
-   return render(request, "model_list.html", {"models": models}) 
- 
-path("models/", views.model_list, name="model_list")
  
