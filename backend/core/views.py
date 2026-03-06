@@ -65,41 +65,38 @@ def ai_service_catalog(request):
 
 # View to retrieve AI service interfaces
 def model_service_page(request, model_id):
-    # Fetch the model metadata from the database
     service = get_object_or_404(AIModel, id=model_id, is_interactive=True)
     result = None
 
     if request.method == "POST":
-        # 1. Prepare the data to send to FastAPI
-        # We send the model_id and the relative path of the file saved in /media/ 
-        execution_payload = {
-            "model_id": service.id,
-            "file_path": service.model_file.name # e.g., 'models/my_model.txt'
-        }
+        user_text = request.POST.get("user_input", "")
 
-        # 2. Call the FastAPI 'execute' endpoint
         try:
-            async def call_fastapi():
+            async def call_ai_suite():
                 async with httpx.AsyncClient() as client:
-                    # Pointing to the execute endpoint we created in main.py
+                    # We now pass the file_path so FastAPI knows which script to run
                     response = await client.post(
                         "http://ai_suite:8001/execute", 
-                        params=execution_payload, # FastAPI expects these as query params
+                        params={
+                            "model_id": service.id, 
+                            "user_input": user_text,
+                            "file_path": service.model_file.name  # Sent to FastAPI
+                        },
                         timeout=10.0
                     )
                     return response.json()
 
-            # Execute the async call within our sync view
-            response_data = async_to_sync(call_fastapi)()
-            result = response_data.get("message") # This will be the "Success" message from FastAPI 
+            response_data = async_to_sync(call_ai_suite)()
+            
+            if response_data.get("status") == "success":
+                result = response_data.get("message")
+            else:
+                result = f"Error: {response_data.get('message')}"
             
         except Exception as e:
-            result = f"Execution Error: {str(e)}"
+            result = f"Communication Error: {str(e)}"
 
-    return render(request, "model_service.html", {
-        "service": service,
-        "result": result
-    })
+    return render(request, "model_service.html", {"service": service, "result": result})
 
 async def home(request):
     # 1. Resolve Sync Database logic before rendering
@@ -147,7 +144,7 @@ def upload_service(request):  # Changed from 'async def' to 'def'
             
             if validation.get("status") == "valid":
                 model_instance.save()
-                return redirect('model_list')
+                return redirect('service_catalog')
             else:
                 form.add_error(None, f"AI Validation Failed: {validation.get('message')}")
     else:
