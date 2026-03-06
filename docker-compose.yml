@@ -13,6 +13,7 @@ services:
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - ./backend:/app
+      - media_data:/app/media
     ports:
       - "8000:8000"
     depends_on:
@@ -25,8 +26,10 @@ services:
     command: uvicorn main:app --host 0.0.0.0 --port 8001
     volumes:
       - ./ai_suite:/app
+      - media_data:/app/media_shared
     ports:
       - "8001:8001"
 
 volumes:
   postgres_data:
+  media_data:
