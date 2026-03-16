@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from docx import Document
 import os
 import importlib.util
 
@@ -39,6 +41,48 @@ async def validate_model(request: ValidationRequest):
 
     return {"status": "valid", "message": "Model structure verified"}
 
+# Code to return results from Python code
+@app.post("/execute")
+async def execute_model(model_id: int, file_path: str, output_type: str, user_input: str = None):
+    full_path = f"/app/media_shared/{file_path}"
+    
+    # 1. Run the script as usual
+    try:
+        spec = importlib.util.spec_from_file_location("dynamic_mod", full_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        raw_result = module.handle_request(user_input)
+    except Exception as e:
+        return {"status": "error", "message": f"Script Error: {str(e)}"}
+
+    # 2. Check the REQUIRED output type
+    if output_type == 'file':  # Matches the 'File Output' choice in your Django model
+        doc = Document()
+        doc.add_heading('AI Service Result', 0)
+        doc.add_paragraph(raw_result)
+        
+        output_filename = f"result_{model_id}.docx"
+        output_rel_path = f"results/{output_filename}"
+        output_full_path = f"/app/media_shared/{output_rel_path}"
+        
+        os.makedirs(os.path.dirname(output_full_path), exist_ok=True)
+        doc.save(output_full_path)
+        
+        return {
+            "status": "success",
+            "message": "File generated successfully.",
+            "download_url": output_rel_path
+        }
+
+    # Default to text output
+    return {
+        "status": "success",
+        "message": raw_result,
+        "download_url": None
+    }
+
+# Logic used to test inputs and outputs of the AI service (Depreceated)
+"""
 # Logic to import and execute files
 @app.post("/execute")
 async def execute_model(model_id: int, file_path: str, user_input: str = None):
@@ -60,6 +104,7 @@ async def execute_model(model_id: int, file_path: str, user_input: str = None):
         return {"status": "success", "message": result}
     except Exception as e:
         return {"status": "error", "message": f"Script Error: {str(e)}"}
+"""
 
 # Used for debugging to list all files shared with Django
 """

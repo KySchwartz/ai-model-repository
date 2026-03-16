@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.conf import settings
 from .models import AIModel
 from .forms import CustomSignupForm
 from .forms import AIModelForm 
@@ -10,6 +11,7 @@ from .ai_client import validate_model_with_ai
 import httpx
 from asgiref.sync import sync_to_async
 from asgiref.sync import async_to_sync
+import os
  
 @login_required 
 async def upload_model(request):
@@ -67,20 +69,38 @@ def ai_service_catalog(request):
 def model_service_page(request, model_id):
     service = get_object_or_404(AIModel, id=model_id, is_interactive=True)
     result = None
+    download_url = None
 
     if request.method == "POST":
-        user_text = request.POST.get("user_input", "")
+        input_data = ""
+        
+        # Check if the service expects a file or text
+        if service.input_type == 'file' and 'user_file' in request.FILES:
+            uploaded_file = request.FILES['user_file']
+            # Save the incoming file to a 'temp_uploads' folder in media
+            temp_path = os.path.join(settings.MEDIA_ROOT, 'temp_uploads', uploaded_file.name)
+            os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+            
+            with open(temp_path, 'wb+') as destination:
+                for chunk in uploaded_file.chunks():
+                    destination.write(chunk)
+            
+            # We pass the path of the Excel file to FastAPI instead of raw text
+            input_data = f"temp_uploads/{uploaded_file.name}"
+        else:
+            input_data = request.POST.get("user_input", "")
 
+        # Now call FastAPI (same as before, but 'user_input' might now be a file path)
         try:
             async def call_ai_suite():
                 async with httpx.AsyncClient() as client:
-                    # We now pass the file_path so FastAPI knows which script to run
                     response = await client.post(
                         "http://ai_suite:8001/execute", 
                         params={
                             "model_id": service.id, 
-                            "user_input": user_text,
-                            "file_path": service.model_file.name  # Sent to FastAPI
+                            "user_input": input_data, # Could be text OR the path to the Excel
+                            "file_path": service.model_file.name,
+                            "output_type": service.output_type
                         },
                         timeout=10.0
                     )
@@ -90,13 +110,18 @@ def model_service_page(request, model_id):
             
             if response_data.get("status") == "success":
                 result = response_data.get("message")
+                download_url = response_data.get("download_url")
             else:
                 result = f"Error: {response_data.get('message')}"
             
         except Exception as e:
             result = f"Communication Error: {str(e)}"
 
-    return render(request, "model_service.html", {"service": service, "result": result})
+    return render(request, "model_service.html", {
+        "service": service, 
+        "result": result,
+        "download_url": download_url
+        })
 
 async def home(request):
     # 1. Resolve Sync Database logic before rendering
