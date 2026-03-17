@@ -15,26 +15,8 @@ class User(AbstractUser):
 
     role = models.CharField(max_length=15, choices=ROLE_CHOICES, default='consumer')
 
-    credit_balance = models.IntegerField(default=10) # SRS Requirement for monetization
+    credit_balance = models.IntegerField(default=10)
 
-"""
-# Original model only supporting files uploads
-class AIModel(models.Model):
-
-    developer = models.ForeignKey(User, on_delete=models.CASCADE)
-
-    title = models.CharField(max_length=200)
-
-    description = models.TextField()
-
-    framework = models.CharField(max_length=50) # e.g., XGBoost, Random Forest
-
-    version = models.CharField(max_length=10, default="1.0.0")
-
-    model_file = models.FileField(upload_to='models/')
-
-    upload_date = models.DateTimeField(auto_now_add=True)
-"""
 
 class AIModel(models.Model):
     # Existing fields

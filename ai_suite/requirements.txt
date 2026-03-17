@@ -9,6 +9,7 @@ pandas
 openpyxl
 numpy
 matplotlib
+pymupdf
 
 # Document Generation
 python-docx

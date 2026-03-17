@@ -27,10 +27,10 @@ services:
     # command: uvicorn main:app --host 0.0.0.0 --port 8001
     volumes:
       - ./ai_suite:/app
-      - media_data:/app/media_shared
+      - media_data:/app/media
       - ai_workspaces:/app/workspaces
-      - /usr/local/lib/python3.11/site-packages
-      - /usr/local/bin
+      #- /usr/local/lib/python3.11/site-packages
+      #- /usr/local/bin
     ports:
       - "8001:8001"
 

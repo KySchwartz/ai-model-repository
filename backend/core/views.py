@@ -12,7 +12,43 @@ import httpx
 from asgiref.sync import sync_to_async
 from asgiref.sync import async_to_sync
 import os
- 
+
+import ast
+import zipfile
+import io
+
+def validate_contract_in_zip(zip_file, input_type="text"):
+    try:
+        with zipfile.ZipFile(zip_file, 'r') as z:
+            py_files = [f for f in z.namelist() if f.endswith('.py') and not f.startswith('__MACOSX')]
+
+            if not py_files:
+                return False, "No Python files found.", "Ensure your ZIP contains at least one .py file."
+
+            # 🔥 NEW: Prefer ANY main.py anywhere in the ZIP
+            main_candidates = [f for f in py_files if f.endswith("main.py")]
+            entry_point = main_candidates[0] if main_candidates else py_files[0]
+
+            with z.open(entry_point) as f:
+                tree = ast.parse(f.read())
+
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and node.name == 'handle_request':
+                    return True, None, None
+
+            # If we're here, handle_request is missing
+            hint = (
+                "Add this to your code:\n\n"
+                "def handle_request(user_input):\n"
+                "    # Your logic here\n"
+                "    return 'Result'"
+            )
+            return False, f"Missing 'handle_request' in {entry_point}", hint
+
+    except Exception as e:
+        return False, "Analysis Error", str(e)
+
+# Used for uploading an AI Service
 @login_required 
 async def upload_model(request):
     if request.method == "POST":
@@ -40,6 +76,7 @@ async def upload_model(request):
     
     return render(request, "upload.html", {"form": form}) 
 
+# Handles user signup
 def signup_view(request):
     if request.method == 'POST':
         form = CustomSignupForm(request.POST)
@@ -49,10 +86,6 @@ def signup_view(request):
     else:
         form = CustomSignupForm()
     return render(request, 'signup.html', {'form': form})
-
-# Code for just displaying the homepage without async functionality
-#def home(request):
-#    return render(request, "home.html")
 
 # View for code repository
 def model_list(request):
@@ -70,6 +103,7 @@ def model_service_page(request, model_id):
     service = get_object_or_404(AIModel, id=model_id, is_interactive=True)
     result = None
     download_url = None
+    response_data = None
 
     if request.method == "POST":
         input_data = ""
@@ -96,7 +130,7 @@ def model_service_page(request, model_id):
                 async with httpx.AsyncClient() as client:
                     response = await client.post(
                         "http://ai_suite:8001/execute", 
-                        params={
+                        json={
                             "model_id": service.id, 
                             "user_input": input_data, # Could be text OR the path to the Excel
                             "file_path": service.model_file.name,
@@ -105,6 +139,9 @@ def model_service_page(request, model_id):
                         },
                         timeout=300.0
                     )
+                    # Check for non-200 status codes to prevent JSON decode errors
+                    if response.status_code != 200:
+                         return {"status": "error", "message": f"Server Error ({response.status_code}): {response.text[:200]}"}
                     return response.json()
 
             response_data = async_to_sync(call_ai_suite)()
@@ -116,20 +153,29 @@ def model_service_page(request, model_id):
                 result = f"Error: {response_data.get('message')}"
             
         except Exception as e:
+            error_detail = response_data.get('message') if response_data else None
             result = f"Communication Error: {str(e)}"
 
     return render(request, "model_service.html", {
         "service": service, 
         "result": result,
+        "error_detail": error_detail if 'error_detail' in locals() else None,
         "download_url": download_url
         })
 
+# Renders the home page
 async def home(request):
     # 1. Resolve Sync Database logic before rendering
     # We check if user is auth and get their username/role safely
     is_auth = await sync_to_async(lambda: request.user.is_authenticated)()
     user_name = await sync_to_async(lambda: request.user.username if is_auth else None)()
-    user_role = await sync_to_async(lambda: request.user.role if is_auth else None)()
+
+    def get_role(user):
+        if user.is_superuser:
+            return "Admin"
+        return user.role
+
+    user_role = await sync_to_async(lambda: get_role(request.user) if is_auth else None)()
 
     # 2. Call the AI Suite Microservice
     ai_status = "Offline"
@@ -150,11 +196,23 @@ async def home(request):
         "ai_status": ai_status
     })
 
+# Renders the service upload page (must be logged in)
 @login_required
 def upload_service(request):  # Changed from 'async def' to 'def'
     if request.method == "POST":
         form = AIServiceForm(request.POST, request.FILES)
         if form.is_valid():
+            uploaded_file = request.FILES['model_file']
+
+            if uploaded_file.name.endswith('.zip'):
+                is_valid, error_msg, hint = validate_contract_in_zip(uploaded_file)
+                if not is_valid:
+                    form.add_error('model_file', f"Contract Violation: {error_msg}")
+                    return render(request, "upload_service.html", {
+                        "form": form,
+                        "error_hint": hint
+                        })
+
             model_instance = form.save(commit=False)
             model_instance.developer = request.user
             model_instance.is_interactive = True 

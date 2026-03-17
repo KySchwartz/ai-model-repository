@@ -8,6 +8,14 @@
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
 
+        {% if error_hint %}
+            <div style="background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 15px; border-radius: 5px; margin-top: 10px;">
+                <strong>💡 How to fix this:</strong>
+                <p>Your main script must follow a specific format to maintain performance and secuirty on the platform. Copy and paste this structure into your code:</p>
+                <pre style="background: #f8f9fa; padding: 10px; border: 1px solid #ddd;">{{ error_hint }}</pre>
+            </div>
+        {% endif %}
+
         {% for field in form %}
             {% if field.name == 'output_extension' %}
                 <div id="extension-wrapper" style="margin-bottom: 15px; padding: 10px; background: #f0f7ff; border-radius: 8px; display: none;">
