@@ -1,0 +1,5 @@
+--index-url https://download.pytorch.org/whl/cpu
+Pillow
+numpy
+scipy
+ipython

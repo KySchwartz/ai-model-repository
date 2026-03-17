@@ -100,9 +100,10 @@ def model_service_page(request, model_id):
                             "model_id": service.id, 
                             "user_input": input_data, # Could be text OR the path to the Excel
                             "file_path": service.model_file.name,
-                            "output_type": service.output_type
+                            "output_type": service.output_type,
+                            "extension": service.output_extension
                         },
-                        timeout=10.0
+                        timeout=300.0
                     )
                     return response.json()
 

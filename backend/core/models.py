@@ -52,9 +52,17 @@ class AIModel(models.Model):
     # These choices allow the system to adapt to any AI service
     INPUT_CHOICES = [('text', 'Text Input'), ('file', 'File Upload')]
     OUTPUT_CHOICES = [('text', 'Text Result'), ('file', 'File/Image Download')]
+    EXT_CHOICES = [
+        ('.docx', 'Word Document (.docx)'),
+        ('.csv', 'CSV Spreadsheet (.csv)'), 
+        ('.txt', 'Text File (.txt)'),
+        ('.pdf', 'PDF Document (.pdf)'),
+        ('.png', 'Image File (.png)'),
+    ]
     
     input_type = models.CharField(max_length=50, choices=INPUT_CHOICES, blank=True, null=True)
     output_type = models.CharField(max_length=50, choices=OUTPUT_CHOICES, blank=True, null=True)
+    output_extension = models.CharField(max_length=10, choices=EXT_CHOICES, default='.docx', blank=True, null=True)
 
     def __str__(self):
         return self.title
