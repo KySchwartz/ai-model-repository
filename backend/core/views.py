@@ -48,33 +48,19 @@ def validate_contract_in_zip(zip_file, input_type="text"):
     except Exception as e:
         return False, "Analysis Error", str(e)
 
-# Used for uploading an AI Service
 @login_required 
-async def upload_model(request):
-    if request.method == "POST":
-        form = AIModelForm(request.POST, request.FILES)
-        if form.is_valid():
-            # 1. Temporarily hold the data
-            model_instance = form.save(commit=False)
-            
-            # 2. Call AI Suite for validation
-            validation = await validate_model_with_ai(
-                model_instance.framework, 
-                model_instance.version, 
-                request.FILES['file_path'].name
-            )
-            
-            # 3. Handle results
-            if validation.get("status") == "valid":
-                model_instance.developer = request.user
-                model_instance.save()
-                return redirect('model_list')
-            else:
-                form.add_error(None, f"AI Validation Failed: {validation.get('message')}")
-    else:
-        form = AIModelForm()
-    
-    return render(request, "upload.html", {"form": form}) 
+def upload_model(request): 
+   if request.method == "POST": 
+       form = AIModelForm(request.POST, request.FILES) 
+       if form.is_valid(): 
+           model = form.save(commit=False) 
+           model.developer = request.user 
+           model.save() 
+           return redirect("model_list") 
+   else: 
+       form = AIModelForm() 
+ 
+   return render(request, "upload.html", {"form": form}) 
 
 # Handles user signup
 def signup_view(request):
