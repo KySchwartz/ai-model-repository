@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    .spinner {
+        display: none;
+        width: 20px;
+        height: 20px;
+        border: 3px solid rgba(255,255,255,.3);
+        border-radius: 50%;
+        border-top-color: #fff;
+        animation: spin 1s ease-in-out infinite;
+        margin-left: 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    .btn-loading { pointer-events: none; opacity: 0.7; display: flex; align-items: center; justify-content: center; }
+</style>
+
+<script>
+    function handleSubmit(event) {
+        document.getElementById('exec-btn').classList.add('btn-loading');
+        document.getElementById('btn-text').innerText = "Loading...";
+        document.getElementById('loader').style.display = "inline-block";
+        return true;
+    }
+</script>
+
+<div style="max-width: 800px; margin: 50px auto; padding: 30px; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: left;">
+    <h2 style="color: #007BFF;">Running: {{ service.title }}</h2>
+    <p><strong>Framework:</strong> {{ service.framework }} | <strong>Version:</strong> {{ service.version }}</p>
+    <hr>
+
+    <form method="post" enctype="multipart/form-data" onsubmit="return handleSubmit(event)">
+        {% csrf_token %}
+        
+        {% if service.input_type == 'text' %}
+            <label><strong>Enter Text Input:</strong></label>
+            <textarea name="user_input" style="width: 100%; height: 150px; margin-top: 10px; border-radius: 8px; border: 1px solid #ccc; padding: 10px; font-family: sans-serif;"></textarea>
+        {% else %}
+            <label><strong>Upload File for Processing:</strong></label>
+            <input type="file" name="user_file" style="display: block; margin-top: 10px;">
+        {% endif %}
+
+        <button type="submit" id="exec-btn" class="btn" style="background: #28a745; margin-top: 20px; width: 100%; cursor: pointer; font-size: 16px; font-weight: bold;">
+            <span id="btn-text">Execute AI Model</span>
+            <div id="loader" class="spinner"></div>
+        </button>
+    </form>
+
+    {% if result %}
+        <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-left: 5px solid #28a745; border-radius: 4px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);">
+            <h4 style="margin-top: 0; color: #28a745;">Execution Result:</h4>
+            <p style="white-space: pre-wrap; line-height: 1.6;">{{ result }}</p>
+
+            {% if error_detail %}
+            <div style="background: #fff5f5; border-left: 4px solid #ff4d4d; padding: 10px; margin-top: 10px;">
+                <strong style="color: #cc0000;">Technical Details:</strong>
+                <code style="display: block; white-space: pre-wrap; margin-top: 5px;">{{ error_detail }}</code>
+            </div>
+            {% endif %}
+            
+            {% if download_url %}
+                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #dee2e6;">
+                    <p style="margin-bottom: 10px; font-weight: bold;">Your File is ready:</p>
+                    <a href="/media/{{ download_url }}" 
+                       style="display: inline-block; background: #007BFF; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                       📥 Download File
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

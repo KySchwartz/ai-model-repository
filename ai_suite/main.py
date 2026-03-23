@@ -1,15 +1,11 @@
 from fastapi import FastAPI
+from routes.status import router as status_router
+from routes.validate import router as validate_router
+from routes.execute import router as execute_router
 
 app = FastAPI()
 
-@app.get("/")
-def read_root():
-    return {"message": "AI Suite is Online"}
-
-@app.get("/status")
-def get_status():
-    return {
-            "status": "online",
-            "capabilities": ["XGBoost", "Random Forest"],
-            "version": "1.0.0"
-        }
+# Mount routers
+app.include_router(status_router)
+app.include_router(validate_router)
+app.include_router(execute_router)

@@ -41,6 +41,48 @@
             background-color: #222;
             color: white;
         }
+        .dropdown {
+            position: relative;
+            display: inline-block; /* Aligns with other navbar items */
+        }
+
+        .dropbtn {
+            background: none;
+            border: none;
+            color: white;
+            font-weight: bold;
+            font-family: inherit;
+            font-size: inherit;
+            margin: 0 15px;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+
+        .dropdown-content {
+            display: none; /* Hide the dropdown by default */
+            position: absolute;
+            background-color: #222;
+            min-width: 160px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 1;
+        }
+
+        .dropdown-content a {
+            color: white;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block; /* Make links fill the width */
+        }
+
+        .dropdown-content a:hover {
+            background-color: #444444;
+        }
+
+        /* Class added by JavaScript when the menu is active */
+        .show {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -49,12 +91,24 @@
         <a href="/">Home</a>
         
         {% if user.is_authenticated %}
-            <a href="/upload/">Upload Model</a>
+            <div class="dropdown">
+                <a class="dropbtn" onclick="toggleDropdown('uploadMenu')">Upload Model ▼</a>
+                <div id="uploadMenu" class="dropdown-content">
+                    <a href="{% url 'upload_model' %}">Upload Model Files</a>
+                    <a href="{% url 'upload_service' %}">Deploy AI Service</a>
+                </div>
+            </div>
         {% else %}
             <a href="{% url 'login' %}">Upload Model</a>
         {% endif %}
 
-        <a href="/models/">Browse Models</a>
+        <div class="dropdown">
+            <a class="dropbtn" onclick="toggleDropdown('browseMenu')">Browse Models ▼</a>
+            <div id="browseMenu" class="dropdown-content">
+                <a href="{% url 'model_list' %}">📁 Model Files</a>
+                <a href="{% url 'service_catalog' %}">⚡ AI Services</a>
+            </div>
+        </div>
 
         {% if user.is_authenticated %}
             <form action="{% url 'logout' %}" method="post" style="display: inline;">
@@ -75,5 +129,27 @@
         <p>© 2026 AI Model Repository | Docker + Django Powered</p>
     </div>
 
+    <script>
+        function toggleDropdown(id) {
+            // Close all dropdowns first
+            document.querySelectorAll('.dropdown-content').forEach(menu => {
+                if (menu.id !== id) {
+                    menu.classList.remove('show');
+                }
+            });
+
+            // Toggle the one that was clicked
+            document.getElementById(id).classList.toggle('show');
+        }
+
+        // Close dropdowns when clicking outside
+        window.onclick = function(event) {
+            if (!event.target.matches('.dropbtn')) {
+                document.querySelectorAll('.dropdown-content').forEach(menu => {
+                    menu.classList.remove('show');
+                });
+            }
+        }
+    </script>
 </body>
 </html>

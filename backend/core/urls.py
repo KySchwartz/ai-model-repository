@@ -27,9 +27,14 @@ urlpatterns = [
    
     # Models Path 
     path("models/", views.model_list, name="model_list"),
+    path("services/", views.ai_service_catalog, name="service_catalog"),
+    path("services/run/<int:model_id>/", views.model_service_page, name="model_service_page"),
 
     # Upload Path
     path("upload/", views.upload_model, name="upload_model"), 
+
+    # Upload Path for AI Services
+    path("upload-service/", views.upload_service, name="upload_service"),
 
     # Authentication Paths
     path("signup/", views.signup_view, name="signup"),
@@ -38,7 +43,5 @@ urlpatterns = [
 
     #Admin Path
     path('admin/', admin.site.urls),
-]
-
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) 
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

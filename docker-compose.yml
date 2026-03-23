@@ -13,6 +13,7 @@ services:
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - ./backend:/app
+      - media_data:/app/media
     ports:
       - "8000:8000"
     depends_on:
@@ -22,11 +23,18 @@ services:
 
   ai_suite:
     build: ./ai_suite
-    command: uvicorn main:app --host 0.0.0.0 --port 8001
+    # Dockerfile should handle this cleaner
+    # command: uvicorn main:app --host 0.0.0.0 --port 8001
     volumes:
       - ./ai_suite:/app
+      - media_data:/app/media
+      - ai_workspaces:/app/workspaces
+      #- /usr/local/lib/python3.11/site-packages
+      #- /usr/local/bin
     ports:
       - "8001:8001"
 
 volumes:
   postgres_data:
+  media_data:
+  ai_workspaces:
