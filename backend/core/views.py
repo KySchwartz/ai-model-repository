@@ -221,3 +221,43 @@ def upload_service(request):  # Changed from 'async def' to 'def'
         form = AIServiceForm()
     
     return render(request, "upload_service.html", {"form": form})
+
+@login_required
+def developer_dashboard(request):
+    # Only show the logged-in developer's models
+    user_models = AIModel.objects.filter(developer=request.user)
+
+    # Optional: split into "models" and "services" for UI clarity
+    ai_models = user_models.filter(is_interactive=False)
+    ai_services = user_models.filter(is_interactive=True)
+
+    return render(request, "developer_dashboard.html", {
+        "ai_models": ai_models,
+        "ai_services": ai_services,
+    })
+
+@login_required
+def delete_ai_model(request, pk):
+    model = get_object_or_404(AIModel, pk=pk, developer=request.user)
+    model.delete()
+    return redirect("developer_dashboard")
+
+@login_required
+def edit_ai_model(request, pk):
+    model = get_object_or_404(AIModel, pk=pk, developer=request.user)
+
+    # Choose the correct form class
+    FormClass = AIServiceForm if model.is_interactive else AIModelForm
+
+    if request.method == "POST":
+        form = FormClass(request.POST, request.FILES, instance=model)
+        if form.is_valid():
+            form.save()
+            return redirect("developer_dashboard")
+    else:
+        form = FormClass(instance=model)
+
+    return render(request, "edit_model.html", {
+        "form": form,
+        "model": model
+    })

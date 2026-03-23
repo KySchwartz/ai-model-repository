@@ -1,5 +1,8 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.dispatch import receiver
+from django.db.models.signals import post_delete
+from django.db.models.signals import pre_save
 
 class User(AbstractUser):
 
@@ -49,3 +52,21 @@ class AIModel(models.Model):
     def __str__(self):
         return self.title
  
+@receiver(post_delete, sender=AIModel)
+def delete_model_file(sender, instance, **kwargs):
+    if instance.model_file:
+        instance.model_file.delete(save=False)
+
+@receiver(pre_save, sender=AIModel)
+def replace_model_file(sender, instance, **kwargs):
+    if not instance.pk:
+        return  # new model, nothing to replace
+
+    try:
+        old_file = AIModel.objects.get(pk=instance.pk).model_file
+    except AIModel.DoesNotExist:
+        return
+
+    new_file = instance.model_file
+    if old_file and old_file != new_file:
+        old_file.delete(save=False)

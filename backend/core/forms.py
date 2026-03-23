@@ -17,7 +17,7 @@ class CustomSignupForm(UserCreationForm):
 class AIServiceForm(forms.ModelForm):
     class Meta:
         model = AIModel
-        fields = ['title', 'model_file', 'framework', 'version', 'input_type', 'output_type', 'output_extension']
+        fields = ['title', 'description', 'model_file', 'framework', 'version', 'input_type', 'output_type', 'output_extension']
         
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

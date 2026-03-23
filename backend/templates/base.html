@@ -84,6 +84,8 @@
             display: block;
         }
     </style>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
 </head>
 <body>
 
@@ -92,10 +94,11 @@
         
         {% if user.is_authenticated %}
             <div class="dropdown">
-                <a class="dropbtn" onclick="toggleDropdown('uploadMenu')">Upload Model ▼</a>
+                <a class="dropbtn" onclick="toggleDropdown('uploadMenu')">Developer Tools ▼</a>
                 <div id="uploadMenu" class="dropdown-content">
                     <a href="{% url 'upload_model' %}">Upload Model Files</a>
                     <a href="{% url 'upload_service' %}">Deploy AI Service</a>
+                    <a href="{% url 'developer_dashboard' %}">Developer Dashboard</a>
                 </div>
             </div>
         {% else %}

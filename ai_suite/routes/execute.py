@@ -174,17 +174,20 @@ async def execute_model(request: ExecutionRequest):
         workspace_root = os.path.join(BASE_WORKSPACE, f"model_{model_id}")
         
         # 1. Extraction & Persistence
-        if not os.path.exists(workspace_root):
-                os.makedirs(workspace_root, exist_ok=True)
-                
-                # Check if it's actually a zip before trying to extract
-                if file_path.lower().endswith('.zip'):
-                    with zipfile.ZipFile(model_zip_path, 'r') as zip_ref:
-                        zip_ref.extractall(workspace_root)
-                else:
-                    # If it's just a single file (like model.py), copy it into the workspace
-                    import shutil
-                    shutil.copy(model_zip_path, os.path.join(workspace_root, "main.py"))
+        # Always reset the workspace
+        if os.path.exists(workspace_root):
+            shutil.rmtree(workspace_root)
+
+        os.makedirs(workspace_root, exist_ok=True)
+
+        # Always extract or copy the model file
+        if file_path.lower().endswith('.zip'):
+            with zipfile.ZipFile(model_zip_path, 'r') as zip_ref:
+                zip_ref.extractall(workspace_root)
+        else:
+            shutil.copy(model_zip_path, os.path.join(workspace_root, "main.py"))
+
+
 
         # 2. Structural Discovery (Layout Agnostic)
         model_home = None
@@ -232,15 +235,18 @@ async def execute_model(request: ExecutionRequest):
         os.chdir(model_home)
 
         # 4. Load the Model Module
-        module_name = "dynamic_model"
+        module_name = f"dynamic_model_{model_id}"
 
+        # Clear old module cache
         if module_name in sys.modules:
             del sys.modules[module_name]
 
+        importlib.invalidate_caches()
+
         spec = importlib.util.spec_from_file_location(module_name, os.path.join(model_home, "main.py"))
         model_module = importlib.util.module_from_spec(spec)
-        if module_name in sys.modules:
-            importlib.reload(model_module)
+        sys.modules[module_name] = model_module
+
 
         if not validate_main_code(os.path.join(model_home, "main.py")):
             return {
