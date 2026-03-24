@@ -11,6 +11,8 @@ from typing import Optional
 from pydantic import BaseModel
 from docx import Document
 import fitz
+import json
+from pathlib import Path
 
 router = APIRouter()
 
@@ -25,6 +27,7 @@ PRE_INSTALLED_LIBS = [
 ]
 
 BASE_WORKSPACE = "/app/workspaces"
+
 
 def smart_pip_install(workspace_path: str):
     req_path = os.path.join(workspace_path, "requirements.txt")
@@ -83,6 +86,26 @@ def smart_pip_install(workspace_path: str):
                     "This often happens if a library version is incompatible with Python 3.11. "
                     "Try removing the version number from requirements.txt.")
     return None
+
+def install_model_requirements(model_home: str):
+    req_path = os.path.join(model_home, "requirements.txt")
+    if not os.path.exists(req_path):
+        print("No requirements.txt found", flush=True)
+        return
+
+    deps_dir = os.path.join(model_home, "deps")
+    print("Creating deps dir:", deps_dir, flush=True)
+    os.makedirs(deps_dir, exist_ok=True)
+
+    print("Running pip install...", flush=True)
+    subprocess.check_call([
+        sys.executable,
+        "-m", "pip", "install",
+        "--no-cache-dir",
+        "--target", deps_dir,
+        "-r", req_path,
+    ])
+
 
 def handle_formatting(raw_result, output_path, extension):
     """Universal Output Formatter for Text-to-File models."""
@@ -153,6 +176,37 @@ def extract_text_word_pdf(file_path):
     # Return the PATH string so the model can use its own library (like pandas).
     return file_path
 
+def container_to_host_path(container_path: str) -> str:
+    if container_path.startswith("/app/workspaces"):
+        relative = container_path.replace("/app/workspaces", "").lstrip("/")
+        return os.path.join(HOST_WORKSPACE, relative)
+    return container_path
+
+def run_model_in_sandbox(model_home: str, input_payload):
+    relative = model_home.replace("/app/workspaces/", "")
+
+    cmd = [
+        "docker", "run",
+        "--rm",
+        "--cpus", "1",
+        "--memory", "512m",
+        "-v", "ai_workspaces:/workspace:ro",
+        "model-sandbox",
+        relative,
+        json.dumps(input_payload),
+    ]
+
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"Sandbox error: {proc.stderr.strip()}")
+
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        raise RuntimeError(f"Invalid JSON from sandbox: {proc.stdout!r}")
+
+
 class ExecutionRequest(BaseModel):
     model_id: int
     user_input: str
@@ -162,7 +216,6 @@ class ExecutionRequest(BaseModel):
 
 @router.post("/execute")
 async def execute_model(request: ExecutionRequest):
-    # Extract variables from the request body
     model_id = request.model_id
     user_input = request.user_input
     file_path = request.file_path
@@ -172,154 +225,113 @@ async def execute_model(request: ExecutionRequest):
     try:
         model_zip_path = f"/app/media/{file_path}"
         workspace_root = os.path.join(BASE_WORKSPACE, f"model_{model_id}")
-        
+
         # 1. Extraction & Persistence
-        # Always reset the workspace
         if os.path.exists(workspace_root):
             shutil.rmtree(workspace_root)
-
         os.makedirs(workspace_root, exist_ok=True)
 
-        # Always extract or copy the model file
         if file_path.lower().endswith('.zip'):
             with zipfile.ZipFile(model_zip_path, 'r') as zip_ref:
                 zip_ref.extractall(workspace_root)
-        else:
-            shutil.copy(model_zip_path, os.path.join(workspace_root, "main.py"))
 
+            contents = os.listdir(workspace_root)
+            if len(contents) == 1:
+                only_item = os.path.join(workspace_root, contents[0])
+                if os.path.isdir(only_item):
+                    # Move everything up one level
+                    for item in os.listdir(only_item):
+                        shutil.move(os.path.join(only_item, item), workspace_root)
+                    shutil.rmtree(only_item)
+                else:
+                    shutil.copy(model_zip_path, os.path.join(workspace_root, "main.py"))
 
-
-        # 2. Structural Discovery (Layout Agnostic)
+        # 2. Structural Discovery
         model_home = None
-        # First, look for main.py (our standard)
         for root, dirs, files in os.walk(workspace_root):
             if "main.py" in files:
                 model_home = root
                 break
-                
-        # Fallback: If no main.py, look for ANY .py file to use as the entry point
+
         if not model_home:
             for root, dirs, files in os.walk(workspace_root):
                 python_files = [f for f in files if f.endswith('.py')]
-
                 for f in python_files:
                     temp_path = os.path.join(root, f)
-                    
-                    # REBUSTNESS CHECK: Ensure the file is actually text, not a binary/LICENSE
                     try:
                         with open(temp_path, 'rb') as check_f:
-                            # If a null byte is found, it's binary; skip it
-                            if b'\x00' in check_f.read(1024): 
-                                continue 
+                            if b'\x00' in check_f.read(1024):
+                                continue
                     except Exception:
                         continue
 
-                    # Once a valid text-based Python file is found:
                     new_path = os.path.join(root, "main.py")
                     os.rename(temp_path, new_path)
                     model_home = root
-                    break # Exit the file loop
-                
+                    break
                 if model_home:
-                    break # Exit the directory walk
+                    break
 
         if not model_home:
             return {"status": "error", "message": "No Python files found in upload."}
-
-        # 3. Dynamic Environment Prep
-        install_error = smart_pip_install(model_home)
-        if install_error:
-            return {"status": "error", "message": install_error}
-        sys.path = [p for p in sys.path if BASE_WORKSPACE not in p]
-        sys.path.insert(0, model_home)
-        os.chdir(model_home)
-
-        # 4. Load the Model Module
-        module_name = f"dynamic_model_{model_id}"
-
-        # Clear old module cache
-        if module_name in sys.modules:
-            del sys.modules[module_name]
-
-        importlib.invalidate_caches()
-
-        spec = importlib.util.spec_from_file_location(module_name, os.path.join(model_home, "main.py"))
-        model_module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = model_module
-
-
-        if not validate_main_code(os.path.join(model_home, "main.py")):
+        
+        try:
+            install_model_requirements(model_home)
+            print("Installing deps into:", model_home, flush=True)
+        except Exception as e:
             return {
-                "status": "error", 
-                "message": "Model Contract Error: Your script is missing the required 'handle_request(user_input)' function."
+                "status": "error",
+                "message": f"Dependency Installation Error: {str(e)}"
             }
 
-        spec.loader.exec_module(model_module)
-
-        # 5. Core Execution
-        if not hasattr(model_module, 'handle_request'):
-            return {"status": "error", "message": "Model Contract Error: handle_request function missing."}
-        
-# Decide if final_input should be an extracted string or an absolute file path.
-        # We only treat it as a file if it explicitly comes from the uploads folder.
+        # 3. Prepare final_input (must happen BEFORE sandbox)
         is_data_file = isinstance(user_input, str) and user_input.startswith("temp_uploads/")
 
         if is_data_file:
-            # Build the absolute path for the data file
-            # Normalize: strip any accidental leading slashes
             clean_input = user_input.lstrip("/")
-
             abs_data_path = os.path.join("/app/media", clean_input)
-
             ext = os.path.splitext(abs_data_path)[1].lower()
 
-            # Platform intelligence: If it's a document, extract the text.
             if ext in ['.docx', '.pdf', '.txt']:
                 final_input = extract_text_word_pdf(abs_data_path)
             else:
-                # If it's Excel/Binary, send the clean absolute path.
                 final_input = abs_data_path
         else:
-            # It's just a text string like "test" or an empty prompt.
-            # No path-prefixing happens here, fixing the [Errno 2] error.
             final_input = user_input
 
-        # THE CACHE KILLER: Prevents the server from 'remembering' old bugs.
-        module_name = "dynamic_model"
-        if module_name in sys.modules:
-            del sys.modules[module_name]
+        # 4. Execute inside sandbox
+        try:
+            sandbox_response = run_model_in_sandbox(model_home, final_input)
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Sandbox Execution Error: {str(e)}"
+            }
 
-        # Call the script's handle_request function
-        raw_result = model_module.handle_request(final_input)
+        if "error" in sandbox_response:
+            return {
+                "status": "error",
+                "message": sandbox_response["error"]
+            }
 
-        # 6. Response Strategy
-        # The platform determines how to package the result based on requested output_type
+        raw_result = sandbox_response["result"]
+
+        # 5. Response Strategy
         if output_type == "file":
             output_filename = f"output_{model_id}{extension or '.txt'}"
             final_media_path = f"/app/media/temp_uploads/{output_filename}"
             os.makedirs(os.path.dirname(final_media_path), exist_ok=True)
 
-            # Option A: Model returned a specialized object (like a PIL image)
             if hasattr(raw_result, 'save'):
                 raw_result.save(final_media_path)
-
-            # Option B: Model returned a path to a file it generated itself
             elif isinstance(raw_result, str):
-
-                # CASE 1: Model returned an absolute file path
                 if raw_result.startswith("/") and os.path.exists(raw_result):
                     shutil.move(raw_result, final_media_path)
-
-                # CASE 2: Model returned a relative file path
                 elif os.path.exists(os.path.join("/app/media", raw_result)):
                     source_path = os.path.join("/app/media", raw_result)
                     shutil.move(source_path, final_media_path)
-
-                # CASE 3: Model returned TEXT, not a file path
                 else:
                     handle_formatting(raw_result, final_media_path, extension)
-
-            # Option C: Model returned non-string data (numbers, dicts, etc.)
             else:
                 handle_formatting(raw_result, final_media_path, extension)
 
@@ -329,12 +341,11 @@ async def execute_model(request: ExecutionRequest):
                 "download_url": f"temp_uploads/{output_filename}"
             }
 
-        # Otherwise, return raw data (JSON/Text)
         return {"status": "success", "message": str(raw_result)}
 
     except Exception as e:
         return {
-            "status": "error", 
-            "message": f"Runtime Error: {str(e)}", 
+            "status": "error",
+            "message": f"Runtime Error: {str(e)}",
             "traceback": traceback.format_exc()
         }
