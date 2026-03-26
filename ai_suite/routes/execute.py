@@ -260,7 +260,7 @@ async def execute_model(request: ExecutionRequest):
         if not hasattr(model_module, 'handle_request'):
             return {"status": "error", "message": "Model Contract Error: handle_request function missing."}
         
-# Decide if final_input should be an extracted string or an absolute file path.
+        # Decide if final_input should be an extracted string or an absolute file path.
         # We only treat it as a file if it explicitly comes from the uploads folder.
         is_data_file = isinstance(user_input, str) and user_input.startswith("temp_uploads/")
 
