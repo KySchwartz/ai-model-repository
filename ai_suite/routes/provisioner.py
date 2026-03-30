@@ -10,8 +10,8 @@ SIGNATURES = {
     "huggingface": r'(?:from_pretrained|pipeline|load_dataset)\s*\(([\s\S]*?)\)',
     "pytorch_hub": r'torch\.hub\.load\s*\(([\s\S]*?)\)',
     "tf_hub": r'hub\.(?:load|KerasLayer)\s*\(([\s\S]*?)\)',
-    # Catches common model file extensions in URLs
-    "urls": r'["\'](https?://[^\s"\']+\.(?:bin|pth|h5|joblib|onnx|zip|tar\.gz|json))["\']'
+    # Broad scan for quoted URLs
+    "urls": r'["\'](https?://[^"\']+)["\']'
 }
 
 # Broad regex for any string that looks like a Hugging Face repo (e.g., "org/model")
@@ -54,22 +54,37 @@ def scan_for_dependencies(workspace_path):
                         repo_matches = re.findall(HF_REPO_RE, content)
                         for match in repo_matches:
                             # Filter out false positives (MIME types, paths, URLs)
-                            if any(x in match.lower() for x in ['image/', 'text/', 'application/', 'http', '.py', '.png']):
+                            if any(x in match.lower() for x in ['image/', 'text/', 'application/', 'http', '.py', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.csv']):
                                 continue
                             found_assets["huggingface"].add(match)
 
-                        # 2. Function-specific scan for complex calls
+                        # 2. Signature-based scan (complex calls + URLs)
                         for key, pattern in SIGNATURES.items():
-                            raw_calls = re.findall(pattern, content)
-                            for call_args in raw_calls:
-                                potential_ids = re.findall(r'["\']([^"\']+)["\']', call_args)
-                                for match in potential_ids:
-                                    if "{" in match or "}" in match or not match.strip():
-                                        continue
-                                    if key == "huggingface" and match.lower() in TASKS:
-                                        continue
-                                    
-                                    found_assets[key].add(match)
+                            matches = re.findall(pattern, content)
+                            if key == "urls":
+                                # Generic URL regex already captured the URL
+                                for u in matches:
+                                    found_assets["urls"].add(u)
+                            else:
+                                # For function calls, find quoted strings inside the arguments
+                                for call_args in matches:
+                                    potential_ids = re.findall(r'["\']([^"\']+)["\']', call_args)
+                                    for match in potential_ids:
+                                        if match.startswith("http"):
+                                            found_assets["urls"].add(match)
+                                            continue
+                                        if "{" in match or "}" in match or not match.strip():
+                                            continue
+                                        if key == "huggingface" and match.lower() in TASKS:
+                                            continue
+                                        
+                                        found_assets[key].add(match)
+                        
+                        # 3. Final URL filtering (only keep likely model assets)
+                        valid_url_exts = (".bin", ".pth", ".pt", ".ckpt", ".h5", ".joblib", ".onnx", ".zip", ".tar.gz", ".json")
+                        found_assets["urls"] = {
+                            u for u in found_assets["urls"] if any(u.lower().endswith(ext) for ext in valid_url_exts)
+                        }
                         
                         # 3. Check for common single-word models
                         for model in COMMON_MODELS:
@@ -109,7 +124,15 @@ def download_assets(assets, cache_dir):
     if assets["urls"]:
         for url in assets["urls"]:
             filename = url.split("/")[-1]
-            dest = os.path.join(cache_dir, filename)
+            
+            # PyTorch Hub expects weights in a specific subfolder
+            if url.lower().endswith((".pth", ".pt", ".ckpt")):
+                dest_dir = os.path.join(cache_dir, "torch", "hub", "checkpoints")
+            else:
+                dest_dir = cache_dir
+                
+            os.makedirs(dest_dir, exist_ok=True)
+            dest = os.path.join(dest_dir, filename)
             if not os.path.exists(dest):
                 print(f"Provisioning URL Asset: {url}")
                 subprocess.run(["curl", "-L", url, "-o", dest])

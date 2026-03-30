@@ -42,5 +42,6 @@ services:
 volumes:
   postgres_data:
   media_data:
+    name: media_data
   ai_workspaces:
     name: ai_workspaces

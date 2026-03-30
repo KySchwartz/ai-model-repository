@@ -2,6 +2,7 @@ import sys
 import os
 import importlib.util
 import json
+import uuid
 
 def load_module(module_name, file_path):
     spec = importlib.util.spec_from_file_location(module_name, file_path)
@@ -34,6 +35,17 @@ def main():
 
         user_model = load_module("user_model", main_path)
         result = user_model.handle_request(user_input)
+
+        # Handle non-serializable objects (like PIL Images from colorizers)
+        try:
+            from PIL import Image
+            if isinstance(result, Image.Image):
+                out_filename = f"result_{uuid.uuid4().hex}.png"
+                result.save(os.path.join(model_dir, out_filename))
+                result = out_filename  # Return the filename for execute.py to find
+        except Exception:
+            pass
+
         print(json.dumps({"status": "success", "data": result}))
     except Exception as e:
         print(json.dumps({"status": "error", "message": str(e)}))

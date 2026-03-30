@@ -58,7 +58,7 @@ def smart_pip_install(model_home):
     BLOCKLIST = [
         'torch', 'tensorflow', 'nvidia', 'cuda', 'torchvision', 'transformers', 
         'huggingface-hub', 'scikit-learn', 'scikit-image', 'pandas', 'numpy', 
-        'pillow', 'python-docx', 'fpdf', 'opencv-python'
+        'pillow', 'python-docx', 'fpdf', 'opencv-python', 'ipython'
     ]
     cleaned_reqs = [] 
     to_install = []
@@ -115,25 +115,32 @@ def run_model_in_sandbox(model_home, entry_file, user_input):
     # In DooD, we mount the named volume 'ai_workspaces' directly.
     rel_model_path = os.path.relpath(model_home, WORKSPACE_ROOT)
     
+    # Ensure the sandbox can access uploaded files in temp_uploads
+    sandbox_user_input = user_input
+    if user_input.startswith("temp_uploads/"):
+        sandbox_user_input = os.path.join("/app/media", user_input)
+
     volumes = {
-        'ai_workspaces': {'bind': '/workspace', 'mode': 'rw'}
+        'ai_workspaces': {'bind': '/workspace', 'mode': 'rw'},
+        'media_data': {'bind': '/app/media', 'mode': 'ro'}
     }
 
     try:
         container_result = client.containers.run(
             image="model-sandbox",
             entrypoint=["python", "/sandbox/sandbox_runner.py"], 
-            command=[rel_model_path, entry_file, user_input],
+            command=[rel_model_path, entry_file, sandbox_user_input],
             volumes=volumes,
             environment={
                 "TRANSFORMERS_OFFLINE": "1",
                 "HF_DATASETS_OFFLINE": "1",
                 "HF_HUB_OFFLINE": "1",
-                "HF_HOME": "/workspace/global_model_cache" # Provisioner now downloads to .../hub correctly
+                "HF_HOME": "/workspace/global_model_cache",
+                "TORCH_HOME": "/workspace/global_model_cache/torch"
             },
             network_disabled=True,
-            mem_limit="512m",        # 512MB RAM Limit
-            nano_cpus=1000000000,    # 1.0 CPU Limit
+            mem_limit="2g",          # Increased to 2GB to prevent OOM (Exit Code 137)
+            nano_cpus=2000000000,    # Increased to 2.0 CPUs for better performance
             working_dir="/workspace",
             remove=True
         )
@@ -179,16 +186,31 @@ async def execute_model(request: ExecutionRequest):
         if result_json.get("status") == "error":
             return {"status": "error", "message": result_json.get("message")}
 
+        # If the model service expects a file output, process it here
+        if request.output_type == "file":
+            return handle_file_output(result_json.get("data", ""), request.model_id, request.extension, model_home)
+
         return {"status": "success", "message": result_json.get("data", "")}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def handle_file_output(text, model_id, extension):
+def handle_file_output(text, model_id, extension, model_home=None):
     ext = (extension or ".txt").lower()
     file_name = f"output_{model_id}{ext}"
     save_path = f"/app/media/temp_uploads/{file_name}"
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    # Check if 'text' is actually a filename generated inside the sandbox
+    if model_home:
+        potential_file = os.path.join(model_home, str(text))
+        if os.path.isfile(potential_file):
+            shutil.copy(potential_file, save_path)
+            return {
+                "status": "success",
+                "message": "File generated",
+                "download_url": f"temp_uploads/{file_name}"
+            }
 
     if ext == ".docx":
         doc = Document()
