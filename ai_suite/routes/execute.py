@@ -8,6 +8,7 @@ import subprocess
 import shutil
 import docker
 import importlib.util
+import ast
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from docx import Document
@@ -20,7 +21,7 @@ client = docker.from_env()
 
 WORKSPACE_ROOT = "/app/workspaces"
 CACHE_ROOT = "/app/workspaces/huggingface"
-GLOBAL_CACHE = "/app/ai_workspaces/global_model_cache"
+GLOBAL_CACHE = "/app/workspaces/global_model_cache"
 
 class ExecutionRequest(BaseModel):
     model_id: int
@@ -29,18 +30,36 @@ class ExecutionRequest(BaseModel):
     output_type: str = "text"
     extension: str = None
 
+def find_handle_request_file(directory):
+    """Finds the .py file containing the handle_request function."""
+    # 1. Check main.py first as a priority
+    main_py = os.path.join(directory, "main.py")
+    if os.path.exists(main_py):
+        with open(main_py, 'r', encoding='utf-8') as f:
+            if "def handle_request" in f.read():
+                return "main.py"
+
+    # 2. Scan all other .py files
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.endswith(".py"):
+                full_path = os.path.join(root, file)
+                with open(full_path, 'r', encoding='utf-8') as f:
+                    if "def handle_request" in f.read():
+                        return os.path.relpath(full_path, directory)
+    return None
+
 def smart_pip_install(model_home):
     req_path = os.path.join(model_home, "requirements.txt")
-    if not os.path.exists(req_path):
-        return
-
     deps_dir = os.path.join(model_home, "deps")
     os.makedirs(deps_dir, exist_ok=True)
 
-    with open(req_path, 'r') as f:
-        lines = f.readlines()
-
-    BLOCKLIST = ['torch', 'tensorflow', 'nvidia', 'cuda', 'torchvision']
+    # These packages are pre-installed in the model-sandbox Docker image.
+    BLOCKLIST = [
+        'torch', 'tensorflow', 'nvidia', 'cuda', 'torchvision', 'transformers', 
+        'huggingface-hub', 'scikit-learn', 'scikit-image', 'pandas', 'numpy', 
+        'pillow', 'python-docx', 'fpdf', 'opencv-python'
+    ]
     cleaned_reqs = [] 
     to_install = []
     
@@ -50,106 +69,87 @@ def smart_pip_install(model_home):
         'pillow': 'PIL',
         'scikit-learn': 'sklearn'
     }
+    
+    if os.path.exists(req_path):
+        with open(req_path, 'r') as f:
+            lines = f.readlines()
 
-    for line in lines:
-        line = line.strip().lower()
-        if not line or line.startswith(('#', '--')):
-            continue
-        
-        pkg_name = line.split('==')[0].split('>=')[0].split('>')[0].strip()
-        
-        if any(blocked in pkg_name for blocked in BLOCKLIST):
-            print(f"DEBUG: Skipping pre-installed package: {pkg_name}")
-            continue
+        for line in lines:
+            line = line.strip().lower()
+            if not line or line.startswith(('#', '--')):
+                continue
+            
+            pkg_name = line.split('==')[0].split('>=')[0].split('>')[0].strip()
+            
+            if any(blocked in pkg_name for blocked in BLOCKLIST):
+                print(f"DEBUG: Skipping pre-installed package: {pkg_name}")
+                continue
 
-        cleaned_reqs.append(line)
+            cleaned_reqs.append(line)
 
-        import_name = mapping.get(pkg_name, pkg_name).replace('-', '_')
-        sys.path.insert(0, deps_dir)
-        exists = importlib.util.find_spec(import_name) is not None
-        sys.path.pop(0)
+            import_name = mapping.get(pkg_name, pkg_name).replace('-', '_')
+            pkg_path = os.path.join(deps_dir, import_name)
+            if not os.path.exists(pkg_path):
+                to_install.append(line)
 
-        if not exists:
-            to_install.append(line)
+        if to_install:
+            print(f"DEBUG: Installing required local deps: {to_install}")
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install",
+                "--no-cache-dir", 
+                "--target", deps_dir,
+                "--extra-index-url", "https://download.pytorch.org/whl/cpu",
+                *to_install
+            ])
 
-    if to_install:
-        print(f"DEBUG: Installing required local deps: {to_install}")
-        subprocess.check_call([
-            sys.executable, "-m", "pip", "install",
-            "--no-cache-dir", 
-            "--target", deps_dir,
-            "--extra-index-url", "https://download.pytorch.org/whl/cpu",
-            *to_install
-        ])
-
-    # FIXED: This block must be indented to stay inside the function!
+    # Scanning should run regardless of whether requirements.txt exists
     print(f"DEBUG: Scanning {model_home} for any model dependencies...")
     deps = scan_for_dependencies(model_home)
-    
+
     if any(deps.values()):
         print(f"DEBUG: Provisioning found assets: {deps}")
         download_assets(deps, GLOBAL_CACHE)
 
-def run_model_in_sandbox(model_home, user_input):
-    # 1. Host Paths
-    abs_model_path = os.path.abspath(model_home)
-    abs_uploads_path = "/app/media/temp_uploads"
-    abs_global_cache = os.path.abspath(GLOBAL_CACHE)
-
-    # DEBUG: This will show up in your ai_suite terminal
-    print(f"DEBUG: Mounting {abs_model_path} to container /app")
-
-    # 2. THE FIX: Mount the specific folder directly to /app
+def run_model_in_sandbox(model_home, entry_file, user_input):
+    """Runs the model in a network-isolated container with resource limits."""
+    # In DooD, we mount the named volume 'ai_workspaces' directly.
+    rel_model_path = os.path.relpath(model_home, WORKSPACE_ROOT)
+    
     volumes = {
-        abs_model_path: {'bind': '/app', 'mode': 'rw'},
-        abs_global_cache: {'bind': '/root/.cache', 'mode': 'ro'},
-        abs_uploads_path: {'bind': '/app/temp_uploads', 'mode': 'rw'}
-    }
-
-    env_vars = {
-        "HF_HOME": "/root/.cache/huggingface",
-        "TORCH_HOME": "/root/.cache/torch",
-        "TRANSFORMERS_OFFLINE": "1",
-        "HF_DATASETS_OFFLINE": "1",
-        "PYTHONPATH": "/app/deps" 
+        'ai_workspaces': {'bind': '/workspace', 'mode': 'rw'}
     }
 
     try:
-        container_output = client.containers.run(
+        container_result = client.containers.run(
             image="model-sandbox",
-            command=["python", "main.py", user_input], # Simplified path
+            entrypoint=["python", "/sandbox/sandbox_runner.py"], 
+            command=[rel_model_path, entry_file, user_input],
             volumes=volumes,
-            environment=env_vars,
-            network_disabled=False, 
-            remove=True,
-            stdout=True,
-            stderr=True,
-            working_dir="/app" # This makes main.py local to the command
+            environment={
+                "TRANSFORMERS_OFFLINE": "1",
+                "HF_DATASETS_OFFLINE": "1",
+                "HF_HUB_OFFLINE": "1",
+                "HF_HOME": "/workspace/global_model_cache" # Provisioner now downloads to .../hub correctly
+            },
+            network_disabled=True,
+            mem_limit="512m",        # 512MB RAM Limit
+            nano_cpus=1000000000,    # 1.0 CPU Limit
+            working_dir="/workspace",
+            remove=True
         )
-        
-        raw_output = container_output.decode('utf-8').strip()
-        
-        for line in reversed(raw_output.splitlines()):
-            line = line.strip()
-            if line.startswith('{') and line.endswith('}'):
-                try:
-                    return json.loads(line)
-                except ValueError:
-                    continue
-                    
-        return {"status": "error", "message": f"Malformed output from sandbox: {raw_output}"}
-        
+        # Clean up output to ensure we only parse the JSON part
+        decoded_output = container_result.decode('utf-8').strip().split('\n')[-1]
+        return json.loads(decoded_output)
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-
+    
 @router.post("/execute")
 async def execute_model(request: ExecutionRequest):
     model_work_dir = os.path.join(WORKSPACE_ROOT, f"model_{request.model_id}")
     zip_full_path = os.path.join("/app/media", request.file_path)
 
     try:
-        # 1. Persistence & Extraction
+        # 1. Extraction (Same as your original)
         if not os.path.exists(model_work_dir):
             os.makedirs(model_work_dir, exist_ok=True)
             if request.file_path.lower().endswith('.zip'):
@@ -158,33 +158,28 @@ async def execute_model(request: ExecutionRequest):
             else:
                 shutil.copy(zip_full_path, os.path.join(model_work_dir, "main.py"))
 
-        # 2. Structural Discovery
+        # 2. Find the model home and the entry point file
         model_home = None
         for root, dirs, files in os.walk(model_work_dir):
-            if "main.py" in files:
+            if any(f.endswith(".py") for f in files):
                 model_home = root
-                break
+                entry_file = find_handle_request_file(model_home)
+                if entry_file:
+                    break
         
-        if not model_home:
-            raise HTTPException(status_code=400, detail="No main.py found.")
+        if not model_home or not entry_file:
+            raise HTTPException(status_code=400, detail="Could not find handle_request in any Python file.")
 
-        # 3. SMART Installation
+        # 3. Dependencies
         smart_pip_install(model_home)
 
-        # 4. Sandbox Execution
-        result_json = run_model_in_sandbox(model_home, request.user_input)
+        # 4. Run (using the restored mount strategy)
+        result_json = run_model_in_sandbox(model_home, entry_file, request.user_input)
         
-        # FIXED: Standardized error return so the frontend doesn't show "None"
         if result_json.get("status") == "error":
             return {"status": "error", "message": result_json.get("message")}
 
-        raw_output = result_json.get("data", "")
-
-        # 5. Formatting
-        if request.output_type == "file":
-            return handle_file_output(raw_output, request.model_id, request.extension)
-        
-        return {"status": "success", "message": str(raw_output)}
+        return {"status": "success", "message": result_json.get("data", "")}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

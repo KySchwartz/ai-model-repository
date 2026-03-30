@@ -14,7 +14,7 @@ WORKDIR /sandbox
 # Preinstall heavy ML libraries (same as ai_suite)
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir tensorflow-cpu
-RUN pip install --no-cache-dir scikit-learn scikit-image pandas numpy Pillow ipython
+RUN pip install --no-cache-dir scikit-learn scikit-image pandas numpy Pillow ipython transformers huggingface_hub
 RUN pip install --no-cache-dir python-docx fpdf opencv-python-headless
 
 # Install app-specific requirements
@@ -26,4 +26,4 @@ RUN pip install --no-cache-dir ipython python-magic
 
 COPY sandbox_runner.py /sandbox/sandbox_runner.py
 
-ENTRYPOINT ["python", "/sandbox/sandbox_runner.py"]
+# ENTRYPOINT ["python", "/sandbox/sandbox_runner.py"]

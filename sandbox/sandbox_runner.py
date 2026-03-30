@@ -10,18 +10,16 @@ def load_module(module_name, file_path):
     return module
 
 def main():
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 4:
         print(json.dumps({"status": "error", "message": "Missing arguments"}))
         return
 
-    relative_path = sys.argv[1]
-    user_input = sys.argv[2]
-    model_dir = os.path.join("/workspace", relative_path)
-    main_path = os.path.join(model_dir, "main.py")
-
-    # DEBUG: Let's see what files are actually in the sandbox
-    if os.path.exists(model_dir):
-        print(f"DEBUG: Files in sandbox: {os.listdir(model_dir)}", file=sys.stderr)
+    model_rel_dir = sys.argv[1]
+    entry_file_rel = sys.argv[2]
+    user_input = sys.argv[3]
+    
+    model_dir = os.path.join("/workspace", model_rel_dir)
+    main_path = os.path.join(model_dir, entry_file_rel)
 
     # Ensure the model directory and its deps are in the path
     sys.path.insert(0, model_dir)
@@ -30,6 +28,10 @@ def main():
         sys.path.insert(0, deps_path)
 
     try:
+        if not os.path.exists(main_path):
+            print(json.dumps({"status": "error", "message": f"File {entry_file_rel} not found"}))
+            return
+
         user_model = load_module("user_model", main_path)
         result = user_model.handle_request(user_input)
         print(json.dumps({"status": "success", "data": result}))
