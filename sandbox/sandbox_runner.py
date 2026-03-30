@@ -1,56 +1,40 @@
+import sys
+import os
 import importlib.util
 import json
-import os
-import sys
 
-def load_module_from_path(path: str):
-    # Ensure the model directory is importable
-    sys.path.insert(0, os.path.dirname(path))
-    spec = importlib.util.spec_from_file_location("user_model", path)
+def load_module(module_name, file_path):
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 def main():
-    if len(sys.argv) != 3:
-        print(json.dumps({"error": "Usage: sandbox_runner.py <relative_model_path> <input_json>"}))
-        sys.exit(1)
+    if len(sys.argv) < 3:
+        print(json.dumps({"status": "error", "message": "Missing arguments"}))
+        return
 
     relative_path = sys.argv[1]
-    raw_input = sys.argv[2]
-
+    user_input = sys.argv[2]
     model_dir = os.path.join("/workspace", relative_path)
     main_path = os.path.join(model_dir, "main.py")
 
-    if not os.path.exists(main_path):
-        print(json.dumps({"error": f"main.py not found at {main_path}"}))
-        sys.exit(1)
+    # DEBUG: Let's see what files are actually in the sandbox
+    if os.path.exists(model_dir):
+        print(f"DEBUG: Files in sandbox: {os.listdir(model_dir)}", file=sys.stderr)
 
-    # NEW: Add per-model dependency folder to sys.path
+    # Ensure the model directory and its deps are in the path
+    sys.path.insert(0, model_dir)
     deps_path = os.path.join(model_dir, "deps")
     if os.path.isdir(deps_path):
         sys.path.insert(0, deps_path)
-    print("DEPS PATH:", deps_path, "EXISTS:", os.path.isdir(deps_path), flush=True)
 
     try:
-        payload = json.loads(raw_input)
-    except json.JSONDecodeError:
-        print(json.dumps({"error": "Invalid JSON input"}))
-        sys.exit(1)
-
-    # IMPORTANT: No requirement installation here anymore
-    module = load_module_from_path(main_path)
-
-    if not hasattr(module, "handle_request"):
-        print(json.dumps({"error": "handle_request function not found in main.py"}))
-        sys.exit(1)
-
-    try:
-        result = module.handle_request(payload)
-        print(json.dumps({"result": result}))
+        user_model = load_module("user_model", main_path)
+        result = user_model.handle_request(user_input)
+        print(json.dumps({"status": "success", "data": result}))
     except Exception as e:
-        print(json.dumps({"error": str(e)}))
-        sys.exit(1)
+        print(json.dumps({"status": "error", "message": str(e)}))
 
 if __name__ == "__main__":
     main()

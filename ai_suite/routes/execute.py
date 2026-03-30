@@ -1,351 +1,214 @@
 import os
+import io
 import sys
+import uuid
+import json
 import zipfile
-import importlib.util
 import subprocess
 import shutil
-import traceback
-import ast
-from fastapi import APIRouter, Query, HTTPException
-from typing import Optional
+import docker
+import importlib.util
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from docx import Document
-import fitz
-import json
-from pathlib import Path
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from routes.provisioner import scan_for_dependencies, download_assets
 
 router = APIRouter()
+client = docker.from_env()
 
-# --- PLATFORM INFRASTRUCTURE ---
-# We pre-define these to prevent re-installing heavy frameworks 
-# or common formatting tools.
-PRE_INSTALLED_LIBS = [
-    'torch', 'torchvision', 'tensorflow', 'keras', 
-    'numpy', 'pandas', 'scipy', 'skimage', 
-    'pillow', 'ipython', 'cv2', 'sklearn',
-    'python-docx', 'fpdf', 'python-magic'
-]
-
-BASE_WORKSPACE = "/app/workspaces"
-
-
-def smart_pip_install(workspace_path: str):
-    req_path = os.path.join(workspace_path, "requirements.txt")
-    if not os.path.exists(req_path):
-        return
-
-    import importlib.util
-
-    with open(req_path, 'r') as f:
-        reqs = [line.strip() for line in f if line.strip() and not line.startswith('--')]
-
-    to_install = []
-    for req in reqs:
-        # 1. Normalize the name (scikit-image -> skimage)
-        pkg_name = req.split('==')[0].split('>=')[0].split('>')[0].strip().lower()
-        #import_name = pkg_name.replace('-', '_')
-        
-        # FIX: Auto-correct legacy package names that fail on modern Python
-        if pkg_name == 'pil':
-            req = 'Pillow'
-            pkg_name = 'pillow'
-        elif pkg_name == 'sklearn':
-            req = 'scikit-learn'
-            pkg_name = 'scikit-learn'
-
-        # Specific mappings for libraries where pip name != import name
-        mapping = {
-            'scikit-image': 'skimage', 
-            'opencv-python': 'cv2', 
-            'opencv-python-headless': 'cv2',
-            'pillow': 'PIL',
-            'scikit-learn': 'sklearn'
-        }
-        #import_name = mapping.get(pkg_name, import_name)
-        import_name = mapping.get(pkg_name, pkg_name)
-
-        # 2. ACTUALLY check if it's installed, don't just trust a list
-        try:
-            if importlib.util.find_spec(import_name) is None:
-                to_install.append(req)
-        except (ImportError, ValueError):
-            to_install.append(req)
-
-    if to_install:
-        try:
-            print(f"Attempting to install: {to_install}")
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", 
-                "--no-cache-dir", *to_install
-            ], timeout=60) # Add a timeout so it doesn't hang forever
-        except subprocess.CalledProcessError as e:
-            cleaned = [r.split('==')[0] for r in to_install]
-            subprocess.check_call([sys.executable, "-m", "pip", "install", *cleaned])
-            # Instead of raising a hard error, we return a message
-            return (f"Library Installation Failed: {to_install}. Check version compatibility."
-                    "This often happens if a library version is incompatible with Python 3.11. "
-                    "Try removing the version number from requirements.txt.")
-    return None
-
-def install_model_requirements(model_home: str):
-    req_path = os.path.join(model_home, "requirements.txt")
-    if not os.path.exists(req_path):
-        print("No requirements.txt found", flush=True)
-        return
-
-    deps_dir = os.path.join(model_home, "deps")
-    print("Creating deps dir:", deps_dir, flush=True)
-    os.makedirs(deps_dir, exist_ok=True)
-
-    print("Running pip install...", flush=True)
-    subprocess.check_call([
-        sys.executable,
-        "-m", "pip", "install",
-        "--no-cache-dir",
-        "--target", deps_dir,
-        "-r", req_path,
-    ])
-
-
-def handle_formatting(raw_result, output_path, extension):
-    """Universal Output Formatter for Text-to-File models."""
-    ext = extension.lower() if extension else ".txt"
-    
-    if ext == ".docx":
-        from docx import Document
-        doc = Document()
-        doc.add_paragraph(str(raw_result))
-        doc.save(output_path)
-    elif ext == ".pdf":
-        from fpdf import FPDF
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        pdf.multi_cell(0, 10, txt=str(raw_result))
-        pdf.output(output_path)
-    else:
-        # Default to raw text file if no specific format is requested
-        with open(output_path, "w") as f:
-            f.write(str(raw_result))
-
-def is_binary(file_path):
-    """Check if a file contains null bytes (indicating it's binary data)."""
-    try:
-        with open(file_path, 'rb') as f:
-            chunk = f.read(1024)
-            return b'\x00' in chunk
-    except:
-        return True
-    
-def validate_main_code(file_path):
-    """
-    Statically inspects the file to see if 'handle_request' is defined.
-    This is safer than importing because it doesn't execute any code.
-    """
-    try:
-        with open(file_path, "r") as f:
-            tree = ast.parse(f.read())
-        
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == 'handle_request':
-                return True
-    except Exception:
-        return False
-    return False
-
-def extract_text_word_pdf(file_path):
-    ext = os.path.splitext(file_path)[1].lower()
-    
-    # List of formats we WANT to convert to strings
-    if ext == '.docx':
-        doc = Document(file_path)
-        return "\n".join([p.text for p in doc.paragraphs])
-    
-    elif ext == '.pdf':
-        text = ""
-        with fitz.open(file_path) as doc:
-            for page in doc:
-                text += page.get_text()
-        return text
-    
-    elif ext == '.txt':
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            return f.read()
-
-    # CRITICAL: For Excel, Images, and CSVs, DO NOT read the file.
-    # Return the PATH string so the model can use its own library (like pandas).
-    return file_path
-
-def container_to_host_path(container_path: str) -> str:
-    if container_path.startswith("/app/workspaces"):
-        relative = container_path.replace("/app/workspaces", "").lstrip("/")
-        return os.path.join(HOST_WORKSPACE, relative)
-    return container_path
-
-def run_model_in_sandbox(model_home: str, input_payload):
-    relative = model_home.replace("/app/workspaces/", "")
-
-    cmd = [
-        "docker", "run",
-        "--rm",
-        "--cpus", "1",
-        "--memory", "512m",
-        "-v", "ai_workspaces:/workspace:ro",
-        "model-sandbox",
-        relative,
-        json.dumps(input_payload),
-    ]
-
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-
-    if proc.returncode != 0:
-        raise RuntimeError(f"Sandbox error: {proc.stderr.strip()}")
-
-    try:
-        return json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        raise RuntimeError(f"Invalid JSON from sandbox: {proc.stdout!r}")
-
+WORKSPACE_ROOT = "/app/workspaces"
+CACHE_ROOT = "/app/workspaces/huggingface"
+GLOBAL_CACHE = "/app/ai_workspaces/global_model_cache"
 
 class ExecutionRequest(BaseModel):
     model_id: int
     user_input: str
     file_path: str
     output_type: str = "text"
-    extension: Optional[str] = None
+    extension: str = None
+
+def smart_pip_install(model_home):
+    req_path = os.path.join(model_home, "requirements.txt")
+    if not os.path.exists(req_path):
+        return
+
+    deps_dir = os.path.join(model_home, "deps")
+    os.makedirs(deps_dir, exist_ok=True)
+
+    with open(req_path, 'r') as f:
+        lines = f.readlines()
+
+    BLOCKLIST = ['torch', 'tensorflow', 'nvidia', 'cuda', 'torchvision']
+    cleaned_reqs = [] 
+    to_install = []
+    
+    mapping = {
+        'scikit-image': 'skimage', 
+        'opencv-python': 'cv2', 
+        'pillow': 'PIL',
+        'scikit-learn': 'sklearn'
+    }
+
+    for line in lines:
+        line = line.strip().lower()
+        if not line or line.startswith(('#', '--')):
+            continue
+        
+        pkg_name = line.split('==')[0].split('>=')[0].split('>')[0].strip()
+        
+        if any(blocked in pkg_name for blocked in BLOCKLIST):
+            print(f"DEBUG: Skipping pre-installed package: {pkg_name}")
+            continue
+
+        cleaned_reqs.append(line)
+
+        import_name = mapping.get(pkg_name, pkg_name).replace('-', '_')
+        sys.path.insert(0, deps_dir)
+        exists = importlib.util.find_spec(import_name) is not None
+        sys.path.pop(0)
+
+        if not exists:
+            to_install.append(line)
+
+    if to_install:
+        print(f"DEBUG: Installing required local deps: {to_install}")
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install",
+            "--no-cache-dir", 
+            "--target", deps_dir,
+            "--extra-index-url", "https://download.pytorch.org/whl/cpu",
+            *to_install
+        ])
+
+    # FIXED: This block must be indented to stay inside the function!
+    print(f"DEBUG: Scanning {model_home} for any model dependencies...")
+    deps = scan_for_dependencies(model_home)
+    
+    if any(deps.values()):
+        print(f"DEBUG: Provisioning found assets: {deps}")
+        download_assets(deps, GLOBAL_CACHE)
+
+def run_model_in_sandbox(model_home, user_input):
+    # 1. Host Paths
+    abs_model_path = os.path.abspath(model_home)
+    abs_uploads_path = "/app/media/temp_uploads"
+    abs_global_cache = os.path.abspath(GLOBAL_CACHE)
+
+    # DEBUG: This will show up in your ai_suite terminal
+    print(f"DEBUG: Mounting {abs_model_path} to container /app")
+
+    # 2. THE FIX: Mount the specific folder directly to /app
+    volumes = {
+        abs_model_path: {'bind': '/app', 'mode': 'rw'},
+        abs_global_cache: {'bind': '/root/.cache', 'mode': 'ro'},
+        abs_uploads_path: {'bind': '/app/temp_uploads', 'mode': 'rw'}
+    }
+
+    env_vars = {
+        "HF_HOME": "/root/.cache/huggingface",
+        "TORCH_HOME": "/root/.cache/torch",
+        "TRANSFORMERS_OFFLINE": "1",
+        "HF_DATASETS_OFFLINE": "1",
+        "PYTHONPATH": "/app/deps" 
+    }
+
+    try:
+        container_output = client.containers.run(
+            image="model-sandbox",
+            command=["python", "main.py", user_input], # Simplified path
+            volumes=volumes,
+            environment=env_vars,
+            network_disabled=False, 
+            remove=True,
+            stdout=True,
+            stderr=True,
+            working_dir="/app" # This makes main.py local to the command
+        )
+        
+        raw_output = container_output.decode('utf-8').strip()
+        
+        for line in reversed(raw_output.splitlines()):
+            line = line.strip()
+            if line.startswith('{') and line.endswith('}'):
+                try:
+                    return json.loads(line)
+                except ValueError:
+                    continue
+                    
+        return {"status": "error", "message": f"Malformed output from sandbox: {raw_output}"}
+        
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 
 @router.post("/execute")
 async def execute_model(request: ExecutionRequest):
-    model_id = request.model_id
-    user_input = request.user_input
-    file_path = request.file_path
-    output_type = request.output_type
-    extension = request.extension
+    model_work_dir = os.path.join(WORKSPACE_ROOT, f"model_{request.model_id}")
+    zip_full_path = os.path.join("/app/media", request.file_path)
 
     try:
-        model_zip_path = f"/app/media/{file_path}"
-        workspace_root = os.path.join(BASE_WORKSPACE, f"model_{model_id}")
-
-        # 1. Extraction & Persistence
-        if os.path.exists(workspace_root):
-            shutil.rmtree(workspace_root)
-        os.makedirs(workspace_root, exist_ok=True)
-
-        if file_path.lower().endswith('.zip'):
-            with zipfile.ZipFile(model_zip_path, 'r') as zip_ref:
-                zip_ref.extractall(workspace_root)
-
-            contents = os.listdir(workspace_root)
-            if len(contents) == 1:
-                only_item = os.path.join(workspace_root, contents[0])
-                if os.path.isdir(only_item):
-                    # Move everything up one level
-                    for item in os.listdir(only_item):
-                        shutil.move(os.path.join(only_item, item), workspace_root)
-                    shutil.rmtree(only_item)
-                else:
-                    shutil.copy(model_zip_path, os.path.join(workspace_root, "main.py"))
+        # 1. Persistence & Extraction
+        if not os.path.exists(model_work_dir):
+            os.makedirs(model_work_dir, exist_ok=True)
+            if request.file_path.lower().endswith('.zip'):
+                with zipfile.ZipFile(zip_full_path, 'r') as zip_ref:
+                    zip_ref.extractall(model_work_dir)
+            else:
+                shutil.copy(zip_full_path, os.path.join(model_work_dir, "main.py"))
 
         # 2. Structural Discovery
         model_home = None
-        for root, dirs, files in os.walk(workspace_root):
+        for root, dirs, files in os.walk(model_work_dir):
             if "main.py" in files:
                 model_home = root
                 break
-
-        if not model_home:
-            for root, dirs, files in os.walk(workspace_root):
-                python_files = [f for f in files if f.endswith('.py')]
-                for f in python_files:
-                    temp_path = os.path.join(root, f)
-                    try:
-                        with open(temp_path, 'rb') as check_f:
-                            if b'\x00' in check_f.read(1024):
-                                continue
-                    except Exception:
-                        continue
-
-                    new_path = os.path.join(root, "main.py")
-                    os.rename(temp_path, new_path)
-                    model_home = root
-                    break
-                if model_home:
-                    break
-
-        if not model_home:
-            return {"status": "error", "message": "No Python files found in upload."}
         
-        try:
-            install_model_requirements(model_home)
-            print("Installing deps into:", model_home, flush=True)
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"Dependency Installation Error: {str(e)}"
-            }
+        if not model_home:
+            raise HTTPException(status_code=400, detail="No main.py found.")
 
-        # 3. Prepare final_input (must happen BEFORE sandbox)
-        is_data_file = isinstance(user_input, str) and user_input.startswith("temp_uploads/")
+        # 3. SMART Installation
+        smart_pip_install(model_home)
 
-        if is_data_file:
-            clean_input = user_input.lstrip("/")
-            abs_data_path = os.path.join("/app/media", clean_input)
-            ext = os.path.splitext(abs_data_path)[1].lower()
+        # 4. Sandbox Execution
+        result_json = run_model_in_sandbox(model_home, request.user_input)
+        
+        # FIXED: Standardized error return so the frontend doesn't show "None"
+        if result_json.get("status") == "error":
+            return {"status": "error", "message": result_json.get("message")}
 
-            if ext in ['.docx', '.pdf', '.txt']:
-                final_input = extract_text_word_pdf(abs_data_path)
-            else:
-                final_input = abs_data_path
-        else:
-            final_input = user_input
+        raw_output = result_json.get("data", "")
 
-        # 4. Execute inside sandbox
-        try:
-            sandbox_response = run_model_in_sandbox(model_home, final_input)
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"Sandbox Execution Error: {str(e)}"
-            }
-
-        if "error" in sandbox_response:
-            return {
-                "status": "error",
-                "message": sandbox_response["error"]
-            }
-
-        raw_result = sandbox_response["result"]
-
-        # 5. Response Strategy
-        if output_type == "file":
-            output_filename = f"output_{model_id}{extension or '.txt'}"
-            final_media_path = f"/app/media/temp_uploads/{output_filename}"
-            os.makedirs(os.path.dirname(final_media_path), exist_ok=True)
-
-            if hasattr(raw_result, 'save'):
-                raw_result.save(final_media_path)
-            elif isinstance(raw_result, str):
-                if raw_result.startswith("/") and os.path.exists(raw_result):
-                    shutil.move(raw_result, final_media_path)
-                elif os.path.exists(os.path.join("/app/media", raw_result)):
-                    source_path = os.path.join("/app/media", raw_result)
-                    shutil.move(source_path, final_media_path)
-                else:
-                    handle_formatting(raw_result, final_media_path, extension)
-            else:
-                handle_formatting(raw_result, final_media_path, extension)
-
-            return {
-                "status": "success",
-                "message": "Model executed and file generated",
-                "download_url": f"temp_uploads/{output_filename}"
-            }
-
-        return {"status": "success", "message": str(raw_result)}
+        # 5. Formatting
+        if request.output_type == "file":
+            return handle_file_output(raw_output, request.model_id, request.extension)
+        
+        return {"status": "success", "message": str(raw_output)}
 
     except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Runtime Error: {str(e)}",
-            "traceback": traceback.format_exc()
-        }
+        raise HTTPException(status_code=500, detail=str(e))
+
+def handle_file_output(text, model_id, extension):
+    ext = (extension or ".txt").lower()
+    file_name = f"output_{model_id}{ext}"
+    save_path = f"/app/media/temp_uploads/{file_name}"
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    if ext == ".docx":
+        doc = Document()
+        doc.add_paragraph(str(text))
+        doc.save(save_path)
+    elif ext == ".pdf":
+        c = canvas.Canvas(save_path, pagesize=letter)
+        c.drawString(100, 750, str(text))
+        c.save()
+    else:
+        with open(save_path, "w") as f:
+            f.write(str(text))
+
+    return {
+        "status": "success",
+        "message": "File generated",
+        "download_url": f"temp_uploads/{file_name}"
+    }
