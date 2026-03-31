@@ -49,7 +49,7 @@ def find_handle_request_file(directory):
                         return os.path.relpath(full_path, directory)
     return None
 
-def smart_pip_install(model_home):
+def smart_pip_install(model_id, model_home):
     req_path = os.path.join(model_home, "requirements.txt")
     deps_dir = os.path.join(model_home, "deps")
     os.makedirs(deps_dir, exist_ok=True)
@@ -94,13 +94,21 @@ def smart_pip_install(model_home):
 
         if to_install:
             print(f"DEBUG: Installing required local deps: {to_install}")
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install",
-                "--no-cache-dir", 
-                "--target", deps_dir,
-                "--extra-index-url", "https://download.pytorch.org/whl/cpu",
-                *to_install
-            ])
+            # SECURITY: Run pip in a temporary container, NOT in the orchestrator.
+            # This prevents malicious setup.py scripts from accessing the Docker socket.
+            pip_command = [
+                "pip", "install", "--no-cache-dir",
+                "--target", f"/workspace/model_{model_id}/deps",
+                "--extra-index-url", "https://download.pytorch.org/whl/cpu"
+            ] + to_install
+            
+            client.containers.run(
+                image="python:3.11-slim",
+                command=pip_command,
+                volumes={'ai_workspaces': {'bind': '/workspace', 'mode': 'rw'}},
+                network_mode="bridge",
+                remove=True
+            )
 
     # Scanning should run regardless of whether requirements.txt exists
     print(f"DEBUG: Scanning {model_home} for any model dependencies...")
@@ -139,9 +147,11 @@ def run_model_in_sandbox(model_home, entry_file, user_input):
                 "TORCH_HOME": "/workspace/global_model_cache/torch"
             },
             network_disabled=True,
+            read_only=True,          # SECURITY: Prevent modification of the container root FS
             mem_limit="2g",          # Increased to 2GB to prevent OOM (Exit Code 137)
             nano_cpus=2000000000,    # Increased to 2.0 CPUs for better performance
-            working_dir="/workspace",
+            working_dir=os.path.join("/workspace", rel_model_path),
+            tmpfs={'/tmp': ''},      # Allow small temporary writes in RAM
             remove=True
         )
         # Clean up output to ensure we only parse the JSON part
@@ -161,7 +171,12 @@ async def execute_model(request: ExecutionRequest):
             os.makedirs(model_work_dir, exist_ok=True)
             if request.file_path.lower().endswith('.zip'):
                 with zipfile.ZipFile(zip_full_path, 'r') as zip_ref:
-                    zip_ref.extractall(model_work_dir)
+                    for member in zip_ref.namelist():
+                        filename = os.path.basename(member)
+                        if not filename: continue # Skip directories
+                        target_path = os.path.join(model_work_dir, member)
+                        if os.path.commonprefix([os.path.abspath(target_path), os.path.abspath(model_work_dir)]) == os.path.abspath(model_work_dir):
+                            zip_ref.extract(member, model_work_dir)
             else:
                 shutil.copy(zip_full_path, os.path.join(model_work_dir, "main.py"))
 
@@ -178,7 +193,7 @@ async def execute_model(request: ExecutionRequest):
             raise HTTPException(status_code=400, detail="Could not find handle_request in any Python file.")
 
         # 3. Dependencies
-        smart_pip_install(model_home)
+        smart_pip_install(request.model_id, model_home)
 
         # 4. Run (using the restored mount strategy)
         result_json = run_model_in_sandbox(model_home, entry_file, request.user_input)
@@ -203,8 +218,15 @@ def handle_file_output(text, model_id, extension, model_home=None):
 
     # Check if 'text' is actually a filename generated inside the sandbox
     if model_home:
-        potential_file = os.path.join(model_home, str(text))
+        # SECURITY: Ensure 'text' is strictly a filename to prevent path traversal
+        potential_file = os.path.join(model_home, os.path.basename(str(text)))
         if os.path.isfile(potential_file):
+            # If the dev created a file with a specific extension, respect it over the default
+            _, actual_ext = os.path.splitext(potential_file)
+            if actual_ext and actual_ext.lower() != ext:
+                file_name = f"output_{model_id}{actual_ext.lower()}"
+                save_path = os.path.join(os.path.dirname(save_path), file_name)
+
             shutil.copy(potential_file, save_path)
             return {
                 "status": "success",

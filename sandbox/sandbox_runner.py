@@ -41,10 +41,20 @@ def main():
             from PIL import Image
             if isinstance(result, Image.Image):
                 out_filename = f"result_{uuid.uuid4().hex}.png"
-                result.save(os.path.join(model_dir, out_filename))
+                # Ensure we save strictly within the model directory
+                save_path = os.path.join(model_dir, os.path.basename(out_filename))
+                result.save(save_path)
                 result = out_filename  # Return the filename for execute.py to find
         except Exception:
             pass
+
+        # Handle raw bytes output (e.g., dev returns file contents directly)
+        if isinstance(result, (bytes, bytearray)):
+            out_filename = f"result_{uuid.uuid4().hex}.bin"
+            save_path = os.path.join(model_dir, out_filename)
+            with open(save_path, "wb") as f:
+                f.write(result)
+            result = out_filename
 
         print(json.dumps({"status": "success", "data": result}))
     except Exception as e:

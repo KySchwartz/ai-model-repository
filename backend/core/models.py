@@ -38,16 +38,20 @@ class AIModel(models.Model):
     INPUT_CHOICES = [('text', 'Text Input'), ('file', 'File Upload')]
     OUTPUT_CHOICES = [('text', 'Text Result'), ('file', 'File/Image Download')]
     EXT_CHOICES = [
+        ('', 'Custom/Detect from Code'),
         ('.docx', 'Word Document (.docx)'),
         ('.csv', 'CSV Spreadsheet (.csv)'), 
         ('.txt', 'Text File (.txt)'),
         ('.pdf', 'PDF Document (.pdf)'),
         ('.png', 'Image File (.png)'),
+        ('.xlsx', 'Excel Spreadsheet (.xlsx)'),
+        ('.zip', 'Zip Archive (.zip)'),
+        ('.json', 'JSON File (.json)'),
     ]
     
     input_type = models.CharField(max_length=50, choices=INPUT_CHOICES, blank=True, null=True)
     output_type = models.CharField(max_length=50, choices=OUTPUT_CHOICES, blank=True, null=True)
-    output_extension = models.CharField(max_length=10, choices=EXT_CHOICES, default='.docx', blank=True, null=True)
+    output_extension = models.CharField(max_length=10, choices=EXT_CHOICES, default='', blank=True, null=True)
 
     def __str__(self):
         return self.title
