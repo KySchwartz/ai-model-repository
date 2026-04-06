@@ -2,7 +2,8 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
-from .models import AIModel
+from django.db.models import Q
+from .models import AIModel, ModelUsage
 from .forms import CustomSignupForm
 from .forms import AIModelForm 
 from .forms import AIServiceForm
@@ -12,6 +13,7 @@ import httpx
 from asgiref.sync import sync_to_async
 from asgiref.sync import async_to_sync
 import os
+import time
 import ast
 import zipfile
 import io
@@ -83,9 +85,17 @@ def model_list(request):
 
 # View for AI Services
 def ai_service_catalog(request):
-    # Only fetch models that are marked as interactive services
+    query = request.GET.get('q', '')
     services = AIModel.objects.filter(is_interactive=True).order_by('-upload_date')
-    return render(request, "service_catalog.html", {"services": services})
+
+    if query:
+        services = services.filter(
+            Q(title__icontains=query) |
+            Q(description__icontains=query) |
+            Q(framework__icontains=query)
+        )
+
+    return render(request, "service_catalog.html", {"services": services, "query": query})
 
 # View to retrieve AI service interfaces
 def model_service_page(request, model_id):
@@ -95,6 +105,7 @@ def model_service_page(request, model_id):
     response_data = None
 
     if request.method == "POST":
+        start_time = time.time()
         input_data = ""
         
         # Check if the service expects a file or text
@@ -124,7 +135,7 @@ def model_service_page(request, model_id):
                             "user_input": input_data, # Could be text OR the path to the Excel
                             "file_path": service.model_file.name,
                             "output_type": service.output_type,
-                            "extension": service.output_extension
+                            "extension": service.output_extension or ""
                         },
                         timeout=300.0
                     )
@@ -140,6 +151,22 @@ def model_service_page(request, model_id):
                 download_url = response_data.get("download_url")
             else:
                 result = f"Error: {response_data.get('message')}"
+            
+            # Record Telemetry
+            m = response_data.get("metrics", {})
+            ModelUsage.objects.create(
+                model=service,
+                user=request.user if request.user.is_authenticated else None,
+                init_time_seconds=m.get("init_time", 0),
+                execution_time_seconds=m.get("execution_time", 0),
+                peak_memory_mb=m.get("peak_memory", 0),
+                cpu_usage_seconds=m.get("cpu_usage", 0),
+                input_size_bytes=m.get("input_size", 0),
+                output_token_count=m.get("output_tokens", 0),
+                output_type=service.output_type,
+                error_code=m.get("error_code", "UNKNOWN"),
+                status=response_data.get("status", "error")
+            )
             
         except Exception as e:
             error_detail = response_data.get('message') if response_data else None
@@ -263,4 +290,14 @@ def edit_ai_model(request, pk):
     return render(request, "edit_model.html", {
         "form": form,
         "model": model
+    })
+
+@user_passes_test(developer_check)
+def model_usage_stats(request, model_id):
+    # Ensure the developer only sees stats for their own model
+    model = get_object_or_404(AIModel, id=model_id, developer=request.user)
+    usages = model.usages.all().order_by('-timestamp')
+    return render(request, "model_usage_stats.html", {
+        "model": model,
+        "usages": usages
     })

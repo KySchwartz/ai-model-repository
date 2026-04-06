@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="max-width: 1000px; margin: 40px auto; padding: 0 20px; text-align: left;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <h2 style="color: #333; margin: 0;">📊 Usage Statistics: <span style="color: #007BFF;">{{ model.title }}</span></h2>
+        <a href="{% url 'developer_dashboard' %}" 
+           style="background: #6c757d; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px;">
+           ← Back to Dashboard
+        </a>
+    </div>
+
+    <div style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #eee;">
+        <div style="background: #101a2f; color: white; padding: 15px 20px;">
+            <h5 style="margin: 0; font-size: 16px;">Detailed Execution Logs</h5>
+        </div>
+        
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-family: sans-serif;">
+                <thead>
+                    <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6; text-align: left;">
+                        <th style="padding: 15px 20px; font-size: 14px; color: #555;">Timestamp (UTC)</th>
+                        <th style="padding: 15px 20px; font-size: 14px; color: #555;">User</th>
+                        <th style="padding: 15px 20px; font-size: 14px; color: #555;">Init/Exec (s)</th>
+                        <th style="padding: 15px 20px; font-size: 14px; color: #555;">Mem (MB) / CPU (s)</th>
+                        <th style="padding: 15px 20px; font-size: 14px; color: #555;">In/Out</th>
+                        <th style="padding: 15px 20px; font-size: 14px; color: #555;">Error Code</th>
+                        <th style="padding: 15px 20px; font-size: 14px; color: #555;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for usage in usages %}
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 12px 20px; font-size: 14px; color: #444;">{{ usage.timestamp|date:"M d, Y H:i:s" }}</td>
+                        <td style="padding: 12px 20px; font-size: 14px; color: #444;">
+                            {% if usage.user %}
+                                <strong style="color: #007BFF;">{{ usage.user.username }}</strong>
+                            {% else %}
+                                <span style="color: #999; font-style: italic;">Anonymous</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 12px 20px; font-size: 13px; color: #666;">
+                            {{ usage.init_time_seconds|floatformat:2 }}s / {{ usage.execution_time_seconds|floatformat:2 }}s
+                        </td>
+                        <td style="padding: 12px 20px; font-size: 13px; color: #666;">
+                            {{ usage.peak_memory_mb|floatformat:1 }}MB / {{ usage.cpu_usage_seconds|floatformat:2 }}s
+                        </td>
+                        <td style="padding: 12px 20px; font-size: 13px; color: #666;">
+                            {{ usage.input_size_bytes }}B / {{ usage.output_token_count|default:0 }} tokens
+                        </td>
+                        <td style="padding: 12px 20px; font-size: 12px; font-family: monospace; color: {% if usage.error_code == 'SUCCESS' %}#28a745{% else %}#dc3545{% endif %};">
+                            {{ usage.error_code }}
+                        </td>
+                        <td style="padding: 12px 20px;">
+                            {% if usage.status == 'success' %}
+                                <span style="background: #d4edda; color: #155724; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; border: 1px solid #c3e6cb;">
+                                    SUCCESS
+                                </span>
+                            {% else %}
+                                <span style="background: #f8d7da; color: #721c24; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; border: 1px solid #f5c6cb;">
+                                    ERROR
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" style="padding: 40px; text-align: center; color: #999; font-style: italic;">
+                            No usage data has been recorded for this model yet.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

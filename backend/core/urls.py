@@ -45,8 +45,8 @@ urlpatterns = [
     path("developer/dashboard/", views.developer_dashboard, name="developer_dashboard"),
     path("developer/models/<int:pk>/edit/", views.edit_ai_model, name="edit_ai_model"),
     path("developer/models/<int:pk>/delete/", views.delete_ai_model, name="delete_ai_model"),
+    path("developer/models/<int:model_id>/usage/", views.model_usage_stats, name="model_usage_stats"),
 
     #Admin Path
     path('admin/', admin.site.urls),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
