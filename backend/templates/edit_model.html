@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="form-card">
+
+    <h2>✏️ Edit AI Model</h2>
+
+    <form method="POST" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <!-- Title + Framework -->
+        <div class="form-field">
+            <label>Title</label>
+            {{ form.title }}
+        </div>
+
+        <div class="form-field">
+        <label>Description</label>
+            {{ form.description }}
+        </div>
+
+        <div class="form-field">
+            <label>Framework</label>
+            {{ form.framework }}
+        </div>
+
+        <!-- Version + Model File -->
+        <div class="form-field">
+            <label>Version</label>
+            {{ form.version }}
+        </div>
+
+        <div class="form-field">
+            <label>Model File</label>
+            {{ form.model_file }}
+        </div>
+
+        {% if model.is_interactive %}
+        <hr>
+
+        <h3 style="margin-top: 20px;">Input / Output Configuration</h3>
+
+        <div class="form-field">
+            <label>Input Type</label>
+            {{ form.input_type }}
+        </div>
+
+        <div class="form-field">
+            <label>Output Type</label>
+            {{ form.output_type }}
+        </div>
+
+        <div class="form-field">
+            <label>Output Extension</label>
+            {{ form.output_extension }}
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn-primary-full">Save Changes</button>
+
+        <a href="{% url 'developer_dashboard' %}" style="display:block; text-align:center; margin-top:15px; color:#666;">
+            Cancel
+        </a>
+
+    </form>
+
+    {% if form.errors %}
+    <div style="background:#ffe6e6; padding:15px; border-radius:8px; margin-bottom:20px;">
+        <h4 style="color:#b30000; margin:0 0 10px 0;">Form Errors</h4>
+        {{ form.errors }}
+    </div>
+    {% endif %}
+
+</div>
+
+{% endblock %}

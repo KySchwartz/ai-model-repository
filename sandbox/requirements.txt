@@ -14,12 +14,10 @@ pymupdf
 # Document Generation
 python-docx
 fpdf
-reportlab
 
 # Machine Learning Frameworks
 scikit-learn
 joblib        # For loading .pkl model files
-transformers
 # xgboost     # Uncomment if using xgboost (Will increase build time)
 # tensorflow  # Uncomment if you plan to use Deep Learning (Warning: Large)
 # torch       # Uncomment if you plan to use PyTorch (Warning: Large)
@@ -27,4 +25,3 @@ transformers
 # Utilities
 importlib-metadata
 python-magic
-docker

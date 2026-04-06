@@ -14,6 +14,7 @@ services:
     volumes:
       - ./backend:/app
       - media_data:/app/media
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8000:8000"
     depends_on:
@@ -23,18 +24,24 @@ services:
 
   ai_suite:
     build: ./ai_suite
-    # Dockerfile should handle this cleaner
-    # command: uvicorn main:app --host 0.0.0.0 --port 8001
     volumes:
-      - ./ai_suite:/app
       - media_data:/app/media
       - ai_workspaces:/app/workspaces
-      #- /usr/local/lib/python3.11/site-packages
-      #- /usr/local/bin
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8001:8001"
+
+  sandbox:
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile
+    image: model-sandbox
+    command: ["/bin/true"]
+
 
 volumes:
   postgres_data:
   media_data:
+    name: media_data
   ai_workspaces:
+    name: ai_workspaces
