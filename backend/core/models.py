@@ -20,6 +20,12 @@ class User(AbstractUser):
 
     credit_balance = models.IntegerField(default=10)
 
+    def save(self, *args, **kwargs):
+        # Automatically grant Django Admin/Staff status if role is set to 'admin'
+        if self.role == 'admin':
+            self.is_staff = True
+            self.is_superuser = True
+        super().save(*args, **kwargs)
 
 class AIModel(models.Model):
     # Existing fields

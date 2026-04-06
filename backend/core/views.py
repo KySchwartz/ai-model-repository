@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from django.contrib.auth.decorators import login_required 
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
 from .models import AIModel
@@ -12,10 +12,13 @@ import httpx
 from asgiref.sync import sync_to_async
 from asgiref.sync import async_to_sync
 import os
-
 import ast
 import zipfile
 import io
+
+def developer_check(user):
+    """Check if the user has Developer or Admin privileges."""
+    return user.is_authenticated and (user.role in ['developer', 'admin'] or user.is_superuser)
 
 def validate_contract_in_zip(zip_file, input_type="text"):
     try:
@@ -48,7 +51,7 @@ def validate_contract_in_zip(zip_file, input_type="text"):
     except Exception as e:
         return False, "Analysis Error", str(e)
 
-@login_required 
+@user_passes_test(developer_check)
 def upload_model(request): 
    if request.method == "POST": 
        form = AIModelForm(request.POST, request.FILES) 
@@ -183,7 +186,7 @@ async def home(request):
     })
 
 # Renders the service upload page (must be logged in)
-@login_required
+@user_passes_test(developer_check)
 def upload_service(request):  # Changed from 'async def' to 'def'
     if request.method == "POST":
         form = AIServiceForm(request.POST, request.FILES)
@@ -222,7 +225,7 @@ def upload_service(request):  # Changed from 'async def' to 'def'
     
     return render(request, "upload_service.html", {"form": form})
 
-@login_required
+@user_passes_test(developer_check)
 def developer_dashboard(request):
     # Only show the logged-in developer's models
     user_models = AIModel.objects.filter(developer=request.user)
@@ -236,13 +239,13 @@ def developer_dashboard(request):
         "ai_services": ai_services,
     })
 
-@login_required
+@user_passes_test(developer_check)
 def delete_ai_model(request, pk):
     model = get_object_or_404(AIModel, pk=pk, developer=request.user)
     model.delete()
     return redirect("developer_dashboard")
 
-@login_required
+@user_passes_test(developer_check)
 def edit_ai_model(request, pk):
     model = get_object_or_404(AIModel, pk=pk, developer=request.user)
 

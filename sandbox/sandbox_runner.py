@@ -10,6 +10,29 @@ def load_module(module_name, file_path):
     spec.loader.exec_module(module)
     return module
 
+def process_result_item(item, model_dir):
+    """Helper to process a single output item from handle_request."""
+    # Handle PIL Images
+    try:
+        from PIL import Image
+        if isinstance(item, Image.Image):
+            out_filename = f"result_{uuid.uuid4().hex}.png"
+            save_path = os.path.join(model_dir, os.path.basename(out_filename))
+            item.save(save_path)
+            return out_filename
+    except (ImportError, Exception):
+        pass
+
+    # Handle raw bytes
+    if isinstance(item, (bytes, bytearray)):
+        out_filename = f"result_{uuid.uuid4().hex}.bin"
+        save_path = os.path.join(model_dir, out_filename)
+        with open(save_path, "wb") as f:
+            f.write(item)
+        return out_filename
+
+    return item
+
 def main():
     if len(sys.argv) < 4:
         print(json.dumps({"status": "error", "message": "Missing arguments"}))
@@ -35,28 +58,13 @@ def main():
 
         user_model = load_module("user_model", main_path)
         result = user_model.handle_request(user_input)
+        
+        if isinstance(result, list):
+            processed_data = [process_result_item(i, model_dir) for i in result]
+        else:
+            processed_data = process_result_item(result, model_dir)
 
-        # Handle non-serializable objects (like PIL Images from colorizers)
-        try:
-            from PIL import Image
-            if isinstance(result, Image.Image):
-                out_filename = f"result_{uuid.uuid4().hex}.png"
-                # Ensure we save strictly within the model directory
-                save_path = os.path.join(model_dir, os.path.basename(out_filename))
-                result.save(save_path)
-                result = out_filename  # Return the filename for execute.py to find
-        except Exception:
-            pass
-
-        # Handle raw bytes output (e.g., dev returns file contents directly)
-        if isinstance(result, (bytes, bytearray)):
-            out_filename = f"result_{uuid.uuid4().hex}.bin"
-            save_path = os.path.join(model_dir, out_filename)
-            with open(save_path, "wb") as f:
-                f.write(result)
-            result = out_filename
-
-        print(json.dumps({"status": "success", "data": result}))
+        print(json.dumps({"status": "success", "data": processed_data}))
     except Exception as e:
         print(json.dumps({"status": "error", "message": str(e)}))
 

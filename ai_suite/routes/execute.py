@@ -211,6 +211,24 @@ async def execute_model(request: ExecutionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 def handle_file_output(text, model_id, extension, model_home=None):
+    # Handle cases where the model returns multiple files
+    if isinstance(text, list):
+        zip_name = f"output_{model_id}.zip"
+        zip_path = f"/app/media/temp_uploads/{zip_name}"
+        os.makedirs(os.path.dirname(zip_path), exist_ok=True)
+        
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            for item in text:
+                potential_file = os.path.join(model_home, os.path.basename(str(item)))
+                if os.path.isfile(potential_file):
+                    zf.write(potential_file, os.path.basename(potential_file))
+        
+        return {
+            "status": "success",
+            "message": f"{len(text)} files generated",
+            "download_url": f"temp_uploads/{zip_name}"
+        }
+
     ext = (extension or ".txt").lower()
     file_name = f"output_{model_id}{ext}"
     save_path = f"/app/media/temp_uploads/{file_name}"
