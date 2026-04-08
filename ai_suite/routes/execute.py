@@ -9,6 +9,7 @@ import shutil
 import docker
 import importlib.util
 import ast
+import hashlib
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -224,9 +225,40 @@ async def execute_model(request: ExecutionRequest):
     zip_full_path = os.path.join("/app/media", request.file_path)
 
     try:
-        # 1. Extraction (Same as your original)
-        if not os.path.exists(model_work_dir):
-            os.makedirs(model_work_dir, exist_ok=True)
+        # 1. Extraction & Content Hash-based Synchronization logic
+        meta_file = os.path.join(model_work_dir, ".workspace_meta.json")
+        
+        # Calculate content hash to detect changes reliably (bypassing unreliable mtime)
+        hasher = hashlib.md5()
+        with open(zip_full_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hasher.update(chunk)
+        source_hash = hasher.hexdigest()
+        
+        should_refresh = not os.path.exists(model_work_dir)
+        if not should_refresh and os.path.exists(meta_file):
+            try:
+                with open(meta_file, 'r') as f:
+                    meta = json.load(f)
+                    # Refresh if file path changed or content hash changed
+                    if meta.get("file_path") != request.file_path or meta.get("hash") != source_hash:
+                        should_refresh = True
+            except:
+                should_refresh = True
+        elif not os.path.exists(meta_file) and os.path.exists(model_work_dir):
+            should_refresh = True
+
+        if should_refresh:
+            if not os.path.exists(model_work_dir):
+                os.makedirs(model_work_dir, exist_ok=True)
+            else:
+                # Clean workspace of old files (preserving 'deps' to avoid redundant pip installs)
+                for item in os.listdir(model_work_dir):
+                    if item in ['deps', '.workspace_meta.json']: continue
+                    item_path = os.path.join(model_work_dir, item)
+                    if os.path.isdir(item_path): shutil.rmtree(item_path)
+                    else: os.remove(item_path)
+
             if request.file_path.lower().endswith('.zip'):
                 with zipfile.ZipFile(zip_full_path, 'r') as zip_ref:
                     for member in zip_ref.namelist():
@@ -237,6 +269,10 @@ async def execute_model(request: ExecutionRequest):
                             zip_ref.extract(member, model_work_dir)
             else:
                 shutil.copy(zip_full_path, os.path.join(model_work_dir, "main.py"))
+            
+            # Save synchronization metadata
+            with open(meta_file, 'w') as f:
+                json.dump({"file_path": request.file_path, "hash": source_hash}, f)
 
         # 2. Find the model home and the entry point file
         model_home = None
