@@ -30,7 +30,7 @@ def validate_contract_in_zip(zip_file, input_type="text"):
             if not py_files:
                 return False, "No Python files found.", "Ensure your ZIP contains at least one .py file."
 
-            # 🔥 NEW: Prefer ANY main.py anywhere in the ZIP
+            # Find any main.py file anywhere in the ZIP
             main_candidates = [f for f in py_files if f.endswith("main.py")]
             entry_point = main_candidates[0] if main_candidates else py_files[0]
 
@@ -52,6 +52,21 @@ def validate_contract_in_zip(zip_file, input_type="text"):
 
     except Exception as e:
         return False, "Analysis Error", str(e)
+
+def validate_contract_in_py(py_file):
+    """Statically inspects a single .py file for handle_request."""
+    try:
+        content = py_file.read()
+        py_file.seek(0)  # Reset pointer for saving later
+        tree = ast.parse(content)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == 'handle_request':
+                return True, None, None
+        
+        hint = "Add this to your code:\n\ndef handle_request(user_input):\n    return 'Result'"
+        return False, "Missing 'handle_request' function.", hint
+    except Exception as e:
+        return False, "Python Syntax Error", str(e)
 
 @user_passes_test(developer_check)
 def upload_model(request): 
@@ -220,14 +235,18 @@ def upload_service(request):  # Changed from 'async def' to 'def'
         if form.is_valid():
             uploaded_file = request.FILES['model_file']
 
+            is_valid, error_msg, hint = True, None, None
             if uploaded_file.name.endswith('.zip'):
                 is_valid, error_msg, hint = validate_contract_in_zip(uploaded_file)
-                if not is_valid:
-                    form.add_error('model_file', f"Contract Violation: {error_msg}")
-                    return render(request, "upload_service.html", {
-                        "form": form,
-                        "error_hint": hint
-                        })
+            elif uploaded_file.name.endswith('.py'):
+                is_valid, error_msg, hint = validate_contract_in_py(uploaded_file)
+
+            if not is_valid:
+                form.add_error('model_file', f"Contract Violation: {error_msg}")
+                return render(request, "upload_service.html", {
+                    "form": form,
+                    "error_hint": hint
+                })
 
             model_instance = form.save(commit=False)
             model_instance.developer = request.user
