@@ -86,7 +86,7 @@
                         <td>{{ service.output_type }}</td>
                         <td>{{ service.output_extension }}</td>
 
-                        <td class="text-end">
+                        <td class="text-end" style="white-space: nowrap;">
                             <a href="{% url 'edit_ai_model' service.id %}" class="btn btn-sm btn-edit me-2">Edit</a>
 
                             <a href="{% url 'delete_ai_model' service.id %}"
@@ -94,6 +94,7 @@
                                onclick="return confirm('Are you sure you want to delete this service? This action cannot be undone.');">
                                 Delete
                             </a>
+                            <a href="{% url 'model_usage_stats' service.id %}" class="btn btn-sm btn-info">Stats</a>
                         </td>
                     </tr>
                     {% empty %}

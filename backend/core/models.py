@@ -20,6 +20,12 @@ class User(AbstractUser):
 
     credit_balance = models.IntegerField(default=10)
 
+    def save(self, *args, **kwargs):
+        # Automatically grant Django Admin/Staff status if role is set to 'admin'
+        if self.role == 'admin':
+            self.is_staff = True
+            self.is_superuser = True
+        super().save(*args, **kwargs)
 
 class AIModel(models.Model):
     # Existing fields
@@ -74,3 +80,21 @@ def replace_model_file(sender, instance, **kwargs):
     new_file = instance.model_file
     if old_file and old_file != new_file:
         old_file.delete(save=False)
+
+class ModelUsage(models.Model):
+    model = models.ForeignKey(AIModel, on_delete=models.CASCADE, related_name='usages')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    init_time_seconds = models.FloatField(default=0)
+    execution_time_seconds = models.FloatField(default=0)
+    peak_memory_mb = models.FloatField(null=True, blank=True)
+    cpu_usage_seconds = models.FloatField(null=True, blank=True)
+    input_size_bytes = models.IntegerField(default=0)
+    output_token_count = models.IntegerField(null=True, blank=True)
+    output_type = models.CharField(max_length=50, blank=True)
+    error_code = models.CharField(max_length=50, default='SUCCESS')
+    status = models.CharField(max_length=20) # 'success' or 'error'
+
+    def __str__(self):
+        user_label = self.user.username if self.user else "Anonymous"
+        return f"{self.model.title} used by {user_label} at {self.timestamp}"

@@ -3,12 +3,68 @@ import os
 import importlib.util
 import json
 import uuid
+import resource
 
 def load_module(module_name, file_path):
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+def process_result_item(item, model_dir):
+    """Helper to process a single output item from handle_request."""
+    # Handle PIL Images
+    try:
+        from PIL import Image
+        if isinstance(item, Image.Image):
+            out_filename = f"result_{uuid.uuid4().hex}.png"
+            save_path = os.path.join(model_dir, os.path.basename(out_filename))
+            item.save(save_path)
+            return out_filename
+    except (ImportError, Exception):
+        pass
+
+    # Handle raw bytes
+    if isinstance(item, (bytes, bytearray)):
+        out_filename = f"result_{uuid.uuid4().hex}.bin"
+        save_path = os.path.join(model_dir, out_filename)
+        with open(save_path, "wb") as f:
+            f.write(item)
+        return out_filename
+
+    return item
+
+def get_precise_metrics():
+    """Captures container resource usage via cgroups or resource module fallback."""
+    # 1. Memory Usage (Peak) in MB
+    peak_mem_mb = 0
+    # List of common cgroup paths for memory peak/usage
+    mem_paths = [
+        "/sys/fs/cgroup/memory.peak",                   # Cgroup v2 Peak
+        "/sys/fs/cgroup/memory.current",                # Cgroup v2 Current (Fallback)
+        "/sys/fs/cgroup/memory/memory.max_usage_in_bytes", # Cgroup v1 Peak
+        "/sys/fs/cgroup/memory/memory.usage_in_bytes"   # Cgroup v1 Current
+    ]
+    
+    for path in mem_paths:
+        try:
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    val = int(f.read().strip()) / (1024 * 1024)
+                    peak_mem_mb = max(peak_mem_mb, val)
+        except Exception:
+            continue
+    
+    if peak_mem_mb <= 0:
+        peak_mem_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+
+    # 2. CPU Usage (Total User + System) in seconds
+    usage_self = resource.getrusage(resource.RUSAGE_SELF)
+    usage_children = resource.getrusage(resource.RUSAGE_CHILDREN)
+    cpu_seconds = (usage_self.ru_utime + usage_self.ru_stime + 
+                   usage_children.ru_utime + usage_children.ru_stime)
+    
+    return {"peak_memory": peak_mem_mb, "cpu_usage": cpu_seconds}
 
 def main():
     if len(sys.argv) < 4:
@@ -35,28 +91,18 @@ def main():
 
         user_model = load_module("user_model", main_path)
         result = user_model.handle_request(user_input)
+        
+        if isinstance(result, list):
+            processed_data = [process_result_item(i, model_dir) for i in result]
+        else:
+            processed_data = process_result_item(result, model_dir)
 
-        # Handle non-serializable objects (like PIL Images from colorizers)
-        try:
-            from PIL import Image
-            if isinstance(result, Image.Image):
-                out_filename = f"result_{uuid.uuid4().hex}.png"
-                # Ensure we save strictly within the model directory
-                save_path = os.path.join(model_dir, os.path.basename(out_filename))
-                result.save(save_path)
-                result = out_filename  # Return the filename for execute.py to find
-        except Exception:
-            pass
+        # Capture precise resource usage from the kernel before exiting
+        metrics = get_precise_metrics()
 
-        # Handle raw bytes output (e.g., dev returns file contents directly)
-        if isinstance(result, (bytes, bytearray)):
-            out_filename = f"result_{uuid.uuid4().hex}.bin"
-            save_path = os.path.join(model_dir, out_filename)
-            with open(save_path, "wb") as f:
-                f.write(result)
-            result = out_filename
-
-        print(json.dumps({"status": "success", "data": result}))
+        # Use a prefix to help the orchestrator find the JSON block in the logs
+        output = json.dumps({"status": "success", "data": processed_data, "metrics": metrics})
+        print(f"RESULT_JSON:{output}")
     except Exception as e:
         print(json.dumps({"status": "error", "message": str(e)}))
 

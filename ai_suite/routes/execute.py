@@ -9,12 +9,15 @@ import shutil
 import docker
 import importlib.util
 import ast
+import hashlib
+from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from docx import Document
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from routes.provisioner import scan_for_dependencies, download_assets
+import time
 
 router = APIRouter()
 client = docker.from_env()
@@ -28,7 +31,7 @@ class ExecutionRequest(BaseModel):
     user_input: str
     file_path: str
     output_type: str = "text"
-    extension: str = None
+    extension: Optional[str] = None
 
 def find_handle_request_file(directory):
     """Finds the .py file containing the handle_request function."""
@@ -133,12 +136,16 @@ def run_model_in_sandbox(model_home, entry_file, user_input):
         'media_data': {'bind': '/app/media', 'mode': 'ro'}
     }
 
+    exec_start = time.time()
+    error_code = "SUCCESS"
+    
     try:
-        container_result = client.containers.run(
+        container = client.containers.run(
             image="model-sandbox",
             entrypoint=["python", "/sandbox/sandbox_runner.py"], 
             command=[rel_model_path, entry_file, sandbox_user_input],
             volumes=volumes,
+            detach=True,
             environment={
                 "TRANSFORMERS_OFFLINE": "1",
                 "HF_DATASETS_OFFLINE": "1",
@@ -152,23 +159,106 @@ def run_model_in_sandbox(model_home, entry_file, user_input):
             nano_cpus=2000000000,    # Increased to 2.0 CPUs for better performance
             working_dir=os.path.join("/workspace", rel_model_path),
             tmpfs={'/tmp': ''},      # Allow small temporary writes in RAM
-            remove=True
+            remove=False             # We need to inspect it before removal
         )
-        # Clean up output to ensure we only parse the JSON part
-        decoded_output = container_result.decode('utf-8').strip().split('\n')[-1]
-        return json.loads(decoded_output)
+
+        # Wait for the container to finish and capture status code
+        exit_status = container.wait()
+        exit_code = exit_status.get("StatusCode", 0)
+
+        # Fallback values in case of crash
+        peak_mem = 0
+        cpu_usage = 0
+
+        logs = container.logs()
+
+        # Handle non-zero exit codes manually (detach=True doesn't raise ContainerError)
+        if exit_code != 0:
+            if exit_code == 137:
+                error_code = "MEMORY_EXHAUSTION"
+                peak_mem = 2048 # We know it hit the 2GB limit
+            elif exit_code == 124:
+                error_code = "TIMEOUT"
+            else:
+                error_code = f"RUNTIME_ERROR_{exit_code}"
+            
+            message = logs.decode('utf-8')
+            container.remove()
+            return {"status": "error", "message": message, "error_code": error_code, "execution_time": time.time() - exec_start, "peak_memory": peak_mem, "cpu_usage": cpu_usage}
+
+        # Reliable parsing: Find the line containing our specific JSON prefix
+        decoded_logs = logs.decode('utf-8', errors='replace')
+        result_line = ""
+        for line in reversed(decoded_logs.split('\n')):
+            if "RESULT_JSON:" in line:
+                result_line = line.split("RESULT_JSON:", 1)[1].strip()
+                break
+        
+        if not result_line:
+            # Ultimate fallback to the last non-empty line
+            non_empty_lines = [l for l in decoded_logs.strip().split('\n') if l.strip()]
+            result_line = non_empty_lines[-1] if non_empty_lines else "{}"
+
+        result = json.loads(result_line)
+        
+        # Use metrics provided by the sandbox if available
+        s_metrics = result.get("metrics", {})
+        
+        result["execution_time"] = time.time() - exec_start
+        result["error_code"] = "SUCCESS"
+        result["peak_memory"] = s_metrics.get("peak_memory", 0)
+        result["cpu_usage"] = s_metrics.get("cpu_usage", 0)
+
+        container.remove() # Manually clean up
+        return result
+
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        if 'container' in locals():
+            try: container.remove()
+            except: pass
+        return {"status": "error", "message": str(e), "error_code": "SYSTEM_FAULT", "execution_time": time.time() - exec_start, "peak_memory": 0, "cpu_usage": 0}
     
 @router.post("/execute")
 async def execute_model(request: ExecutionRequest):
+    init_start = time.time()
     model_work_dir = os.path.join(WORKSPACE_ROOT, f"model_{request.model_id}")
     zip_full_path = os.path.join("/app/media", request.file_path)
 
     try:
-        # 1. Extraction (Same as your original)
-        if not os.path.exists(model_work_dir):
-            os.makedirs(model_work_dir, exist_ok=True)
+        # 1. Extraction & Content Hash-based Synchronization logic
+        meta_file = os.path.join(model_work_dir, ".workspace_meta.json")
+        
+        # Calculate content hash to detect changes reliably (bypassing unreliable mtime)
+        hasher = hashlib.md5()
+        with open(zip_full_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hasher.update(chunk)
+        source_hash = hasher.hexdigest()
+        
+        should_refresh = not os.path.exists(model_work_dir)
+        if not should_refresh and os.path.exists(meta_file):
+            try:
+                with open(meta_file, 'r') as f:
+                    meta = json.load(f)
+                    # Refresh if file path changed or content hash changed
+                    if meta.get("file_path") != request.file_path or meta.get("hash") != source_hash:
+                        should_refresh = True
+            except:
+                should_refresh = True
+        elif not os.path.exists(meta_file) and os.path.exists(model_work_dir):
+            should_refresh = True
+
+        if should_refresh:
+            if not os.path.exists(model_work_dir):
+                os.makedirs(model_work_dir, exist_ok=True)
+            else:
+                # Clean workspace of old files (preserving 'deps' to avoid redundant pip installs)
+                for item in os.listdir(model_work_dir):
+                    if item in ['deps', '.workspace_meta.json']: continue
+                    item_path = os.path.join(model_work_dir, item)
+                    if os.path.isdir(item_path): shutil.rmtree(item_path)
+                    else: os.remove(item_path)
+
             if request.file_path.lower().endswith('.zip'):
                 with zipfile.ZipFile(zip_full_path, 'r') as zip_ref:
                     for member in zip_ref.namelist():
@@ -179,6 +269,10 @@ async def execute_model(request: ExecutionRequest):
                             zip_ref.extract(member, model_work_dir)
             else:
                 shutil.copy(zip_full_path, os.path.join(model_work_dir, "main.py"))
+            
+            # Save synchronization metadata
+            with open(meta_file, 'w') as f:
+                json.dump({"file_path": request.file_path, "hash": source_hash}, f)
 
         # 2. Find the model home and the entry point file
         model_home = None
@@ -194,23 +288,63 @@ async def execute_model(request: ExecutionRequest):
 
         # 3. Dependencies
         smart_pip_install(request.model_id, model_home)
+        init_time = time.time() - init_start
 
         # 4. Run (using the restored mount strategy)
         result_json = run_model_in_sandbox(model_home, entry_file, request.user_input)
         
+        # Calculate input size (Check if input is a file path or raw text)
+        input_size = len(request.user_input.encode('utf-8'))
+        if request.user_input.startswith("temp_uploads/"):
+            actual_file = os.path.join("/app/media", request.user_input)
+            if os.path.exists(actual_file):
+                input_size = os.path.getsize(actual_file)
+
+        # Build metrics for telemetry
+        metrics = {
+            "init_time": init_time,
+            "execution_time": result_json.get("execution_time", 0),
+            "peak_memory": result_json.get("peak_memory", 0),
+            "cpu_usage": result_json.get("cpu_usage", 0),
+            "error_code": result_json.get("error_code", "SUCCESS"),
+            "input_size": input_size,
+            "output_tokens": len(str(result_json.get("data", "")).split()) if result_json.get("status") == "success" else 0
+        }
+
         if result_json.get("status") == "error":
-            return {"status": "error", "message": result_json.get("message")}
+            return {"status": "error", "message": result_json.get("message"), "metrics": metrics}
 
         # If the model service expects a file output, process it here
+        final_resp = {"status": "success", "message": result_json.get("data", ""), "metrics": metrics}
         if request.output_type == "file":
-            return handle_file_output(result_json.get("data", ""), request.model_id, request.extension, model_home)
+            file_res = handle_file_output(result_json.get("data", ""), request.model_id, request.extension, model_home)
+            final_resp.update(file_res)
+            return final_resp
 
-        return {"status": "success", "message": result_json.get("data", "")}
+        return final_resp
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 def handle_file_output(text, model_id, extension, model_home=None):
+    # Handle cases where the model returns multiple files
+    if isinstance(text, list):
+        zip_name = f"output_{model_id}.zip"
+        zip_path = f"/app/media/temp_uploads/{zip_name}"
+        os.makedirs(os.path.dirname(zip_path), exist_ok=True)
+        
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            for item in text:
+                potential_file = os.path.join(model_home, os.path.basename(str(item)))
+                if os.path.isfile(potential_file):
+                    zf.write(potential_file, os.path.basename(potential_file))
+        
+        return {
+            "status": "success",
+            "message": f"{len(text)} files generated",
+            "download_url": f"temp_uploads/{zip_name}"
+        }
+
     ext = (extension or ".txt").lower()
     file_name = f"output_{model_id}{ext}"
     save_path = f"/app/media/temp_uploads/{file_name}"

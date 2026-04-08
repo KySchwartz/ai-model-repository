@@ -2,7 +2,7 @@ import os
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
-from .models import User, AIModel
+from .models import User, AIModel, ModelUsage
 
 # Register the Custom User model
 admin.site.register(User, UserAdmin)
@@ -55,3 +55,9 @@ class AIModelAdmin(admin.ModelAdmin):
         messages.success(request, f"Deleted {deleted_count} orphaned model file(s).")
 
     clean_orphaned_model_files.short_description = "Clean orphaned model files"
+
+@admin.register(ModelUsage)
+class ModelUsageAdmin(admin.ModelAdmin):
+    list_display = ('model', 'user', 'timestamp', 'execution_time_seconds', 'peak_memory_mb', 'cpu_usage_seconds', 'status')
+    list_filter = ('status', 'timestamp', 'model')
+    search_fields = ('model__title', 'user__username')
