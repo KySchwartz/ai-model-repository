@@ -67,15 +67,14 @@ def get_precise_metrics():
     return {"peak_memory": peak_mem_mb, "cpu_usage": cpu_seconds}
 
 def main():
-    if len(sys.argv) < 4:
+    if len(sys.argv) < 3:
         print(json.dumps({"status": "error", "message": "Missing arguments"}))
         return
 
-    model_rel_dir = sys.argv[1]
-    entry_file_rel = sys.argv[2]
-    user_input = sys.argv[3]
+    entry_file_rel = sys.argv[1]
+    user_input = sys.argv[2]
     
-    model_dir = os.path.join("/workspace", model_rel_dir)
+    model_dir = "/workspace"
     main_path = os.path.join(model_dir, entry_file_rel)
 
     # Ensure the model directory and its deps are in the path

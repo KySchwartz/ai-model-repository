@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib import messages
 from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
 from django.db.models import Q
@@ -9,6 +10,8 @@ from .forms import AIModelForm
 from .forms import AIServiceForm
 from .ai_client import get_ai_status
 from .ai_client import validate_model_with_ai
+from django.utils import timezone
+from datetime import timedelta
 import httpx
 from asgiref.sync import sync_to_async
 from asgiref.sync import async_to_sync
@@ -118,8 +121,46 @@ def model_service_page(request, model_id):
     result = None
     download_url = None
     response_data = None
+    credit_error = False
+
+    # Logic for managing user credits (monetization demo)
+    if request.user.is_authenticated:
+        now = timezone.now()
+        
+        # Check if subscription has expired
+        if request.user.is_subscribed and request.user.subscription_expiry:
+            if now > request.user.subscription_expiry:
+                request.user.is_subscribed = False
+                request.user.save()
+
+        if (now - request.user.last_credit_refresh).total_seconds() >= 86400:
+            # Reset total balance to Purchased + 5 (replenishing allowance without stacking)
+            request.user.credit_balance = request.user.purchased_credits + 5
+            request.user.last_credit_refresh = now
+            request.user.save()
 
     if request.method == "POST":
+        # Check if the user has the credit to run a model
+        can_run = False
+        if not request.user.is_authenticated:
+            return redirect('login')
+            
+        # Determine if user is exempt from credit limits
+        is_admin = request.user.is_superuser or request.user.role == 'admin'
+        is_dev_of_model = service.developer == request.user
+        
+        if is_admin or request.user.is_subscribed or is_dev_of_model:
+            can_run = True
+        elif request.user.credit_balance > 0:
+            can_run = True
+        
+        if not can_run:
+            return render(request, "model_service.html", {
+                "service": service,
+                "result": "You have run out of credits.",
+                "credit_error": True
+            })
+
         start_time = time.time()
         input_data = ""
         
@@ -164,6 +205,15 @@ def model_service_page(request, model_id):
             if response_data.get("status") == "success":
                 result = response_data.get("message")
                 download_url = response_data.get("download_url")
+                
+                # Added logic for credit manipulation
+                # Deduct credit on successful run (if not exempt)
+                if not (request.user.is_superuser or request.user.is_subscribed or service.developer == request.user):
+                    request.user.credit_balance -= 1
+                    # If total balance drops below purchased amount, update the purchased anchor
+                    if request.user.credit_balance < request.user.purchased_credits:
+                        request.user.purchased_credits = request.user.credit_balance
+                    request.user.save()
             else:
                 result = f"Error: {response_data.get('message')}"
             
@@ -193,6 +243,57 @@ def model_service_page(request, model_id):
         "error_detail": error_detail if 'error_detail' in locals() else None,
         "download_url": download_url
         })
+
+# View for account management page
+@login_required
+def account_management(request):
+    return render(request, "account_management.html", {
+        "user": request.user,
+        "days_until_refresh": 1 - (timezone.now() - request.user.last_credit_refresh).days
+    })
+
+# View for checkout page
+@login_required
+def checkout_view(request):
+    if request.method == "POST":
+        purchase_type = request.POST.get("purchase_type", "credits")
+        
+        if purchase_type == "subscription":
+            amount = 1
+            price = 11.99
+            display_name = "Monthly Premium Subscription (Unlimited Usage)"
+        else:
+            amount = int(request.POST.get("credit_amount", 50))
+            price = amount * 0.10
+            display_name = f"{amount} AI Service Credits"
+            
+        return render(request, "checkout.html", {
+            "amount": amount,
+            "price": f"{price:.2f}",
+            "purchase_type": purchase_type,
+            "display_name": display_name
+        })
+    return redirect("account_management")
+
+@login_required
+def process_payment(request):
+    if request.method == "POST":
+        amount = int(request.POST.get("amount", 0))
+        purchase_type = request.POST.get("purchase_type")
+
+        if purchase_type == "subscription":
+            request.user.is_subscribed = True
+            request.user.subscription_expiry = timezone.now() + timedelta(days=30)
+            request.user.save()
+            messages.success(request, "Your Premium Subscription is now active for 30 days!")
+        elif amount > 0:
+            request.user.purchased_credits += amount
+            request.user.credit_balance += amount
+            request.user.save()
+            messages.success(request, f"Successfully purchased {amount} credits!")
+            return redirect("account_management")
+    
+    return redirect("account_management")
 
 # Renders the home page
 async def home(request):
