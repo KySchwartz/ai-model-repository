@@ -20,6 +20,7 @@ import time
 import ast
 import zipfile
 import io
+import uuid
 
 def developer_check(user):
     """Check if the user has Developer or Admin privileges."""
@@ -104,7 +105,18 @@ def model_list(request):
 # View for AI Services
 def ai_service_catalog(request):
     query = request.GET.get('q', '')
-    services = AIModel.objects.filter(is_interactive=True).order_by('-upload_date')
+    
+    if request.user.is_authenticated:
+        # Admins see everything. Developers see published models OR their own unpublished ones.
+        if request.user.role == 'admin' or request.user.is_superuser:
+            services = AIModel.objects.filter(is_interactive=True)
+        else:
+            services = AIModel.objects.filter(is_interactive=True).filter(Q(is_published=True) | Q(developer=request.user))
+    else:
+        # Anonymous users only see published
+        services = AIModel.objects.filter(is_interactive=True, is_published=True).order_by('-upload_date')
+
+    services = services.order_by('-upload_date')
 
     if query:
         services = services.filter(
@@ -122,6 +134,12 @@ def model_service_page(request, model_id):
     download_url = None
     response_data = None
     credit_error = False
+
+    # Permission check for unpublished services
+    is_admin = request.user.is_authenticated and (request.user.is_superuser or request.user.role == 'admin')
+    is_dev_of_model = request.user.is_authenticated and service.developer == request.user
+    if not service.is_published and not (is_admin or is_dev_of_model):
+        return redirect('service_catalog')
 
     # Logic for managing user credits (monetization demo)
     if request.user.is_authenticated:
@@ -146,8 +164,6 @@ def model_service_page(request, model_id):
             return redirect('login')
             
         # Determine if user is exempt from credit limits
-        is_admin = request.user.is_superuser or request.user.role == 'admin'
-        is_dev_of_model = service.developer == request.user
         
         if is_admin or request.user.is_subscribed or is_dev_of_model:
             can_run = True
@@ -167,8 +183,9 @@ def model_service_page(request, model_id):
         # Check if the service expects a file or text
         if service.input_type == 'file' and 'user_file' in request.FILES:
             uploaded_file = request.FILES['user_file']
+            unique_filename = f"{uuid.uuid4().hex}_{uploaded_file.name}"
             # Save the incoming file to a 'temp_uploads' folder in media
-            temp_path = os.path.join(settings.MEDIA_ROOT, 'temp_uploads', uploaded_file.name)
+            temp_path = os.path.join(settings.MEDIA_ROOT, 'temp_uploads', unique_filename)
             os.makedirs(os.path.dirname(temp_path), exist_ok=True)
             
             with open(temp_path, 'wb+') as destination:
@@ -176,7 +193,7 @@ def model_service_page(request, model_id):
                     destination.write(chunk)
             
             # We pass the path of the Excel file to FastAPI instead of raw text
-            input_data = f"temp_uploads/{uploaded_file.name}"
+            input_data = f"temp_uploads/{unique_filename}"
         else:
             input_data = request.POST.get("user_input", "")
 
@@ -294,6 +311,22 @@ def process_payment(request):
             return redirect("account_management")
     
     return redirect("account_management")
+
+@user_passes_test(developer_check)
+def toggle_publish_status(request, model_id):
+    # Allow admins to toggle any service, but restrict developers to their own
+    if request.user.is_superuser or request.user.role == 'admin':
+        service = get_object_or_404(AIModel, id=model_id)
+    else:
+        service = get_object_or_404(AIModel, id=model_id, developer=request.user)
+
+    service.is_published = not service.is_published
+    service.save()
+    status = "published" if service.is_published else "hidden"
+    messages.success(request, f"Service '{service.title}' is now {status}.")
+    
+    # Redirect back to the referring page (e.g., catalog or dashboard) for better UX
+    return redirect(request.META.get('HTTP_REFERER', 'developer_dashboard'))
 
 # Renders the home page
 async def home(request):

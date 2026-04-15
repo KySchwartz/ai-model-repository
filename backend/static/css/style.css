@@ -70,7 +70,6 @@
 
 .dashboard-card {
     border-radius: 8px;
-    overflow: hidden;
 }
 
 /* Header Colors */
@@ -115,6 +114,17 @@
     background-color: #bb2d3b;
     color: white;
 }
+
+.btn-published {
+    background-color: #ffc107;
+    color: black;
+}
+
+.btn-unpublished {
+    background-color: #6f42c1;
+    color: white;
+}
+
 
 /* Table */
 .dashboard-table th {

@@ -2,6 +2,7 @@ import os
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
+from django.core.management import call_command
 from .models import User, AIModel, ModelUsage
 
 # Register the Custom User model
@@ -18,7 +19,7 @@ class AIModelAdmin(admin.ModelAdmin):
     list_filter = ('framework', 'upload_date')
 
     # Add additional actions for AI models
-    actions = ["clean_orphaned_model_files"]
+    actions = ["clean_orphaned_model_files", "run_cleanup_outputs"]
 
     def clean_orphaned_model_files(self, request, queryset=None):
         """
@@ -55,6 +56,18 @@ class AIModelAdmin(admin.ModelAdmin):
         messages.success(request, f"Deleted {deleted_count} orphaned model file(s).")
 
     clean_orphaned_model_files.short_description = "Clean orphaned model files"
+
+    def run_cleanup_outputs(self, request, queryset=None):
+        """
+        Admin action: Trigger the management command to purge old temporary outputs.
+        """
+        try:
+            call_command('cleanup_outputs')
+            messages.success(request, "Cleanup of temporary output files completed successfully.")
+        except Exception as e:
+            messages.error(request, f"Error running cleanup command: {e}")
+
+    run_cleanup_outputs.short_description = "Purge temporary outputs (>24h old)"
 
 @admin.register(ModelUsage)
 class ModelUsageAdmin(admin.ModelAdmin):

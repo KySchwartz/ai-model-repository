@@ -49,6 +49,8 @@ class AIModel(models.Model):
     # Flexible service fields
     is_interactive = models.BooleanField(default=False)
     
+    is_published = models.BooleanField(default=False)
+    
     # These choices allow the system to adapt to any AI service
     INPUT_CHOICES = [('text', 'Text Input'), ('file', 'File Upload')]
     OUTPUT_CHOICES = [('text', 'Text Result'), ('file', 'File/Image Download')]
