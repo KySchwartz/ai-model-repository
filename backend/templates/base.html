@@ -79,6 +79,23 @@
             background-color: #444444;
         }
 
+        .nav-link-btn {
+        background: none;
+        border: none;
+        padding: 15px 40px;
+        margin: 0;
+        color: white;
+        font-weight: bold;
+        font-family: inherit;
+        font-size: inherit;
+        cursor: pointer;
+        transition: color 0.3s ease;
+        }
+
+        .nav-link-btn:hover {
+            background-color: #444444;
+        }
+
         /* Class added by JavaScript when the menu is active */
         .show {
             display: block;
@@ -115,16 +132,22 @@
             </div>
         </div>
 
-        {% if user.is_authenticated %}
-            <form action="{% url 'logout' %}" method="post" style="display: inline;">
-                {% csrf_token %}
-                <button type="submit" style="background: none; border: none; color: white; cursor: pointer; font-weight: bold; font-family: inherit; font-size: inherit; padding: 0; margin: 0 15px;">
-                    Logout
-                </button>
-            </form>
-        {% else %}
-            <a href="{% url 'login' %}">Login</a>
-        {% endif %}
+        <div class="dropdown">
+            <a class="dropbtn" onclick="toggleDropdown('accountMenu')">Account ▼</a>
+            <div id="accountMenu" class="dropdown-content">
+            {% if user.is_authenticated %}
+                <form action="{% url 'logout' %}" method="post" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="nav-link-btn">
+                        Logout
+                    </button>
+                </form>
+            {% else %}
+                <a href="{% url 'login' %}">Login</a>
+            {% endif %}
+            <a href="{% url 'account_management' %}">Manage Usage</a>
+            </div>
+        </div>
     </div>
 
     {% block content %}
