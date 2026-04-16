@@ -108,8 +108,7 @@ def smart_pip_install(model_id, model_home):
             client.containers.run(
                 image="python:3.11-slim",
                 command=pip_command,
-                # SECURITY: Only mount this specific model's directory
-                volumes={model_home: {'bind': '/workspace', 'mode': 'rw'}},
+                volumes={'ai_workspaces': {'bind': '/workspace', 'mode': 'rw'}},
                 network_mode="bridge",
                 remove=True
             )
@@ -123,24 +122,19 @@ def smart_pip_install(model_id, model_home):
         download_assets(deps, GLOBAL_CACHE)
 
 def run_model_in_sandbox(model_home, entry_file, user_input):
-    """Runs the model in a network-isolated container with zero-trust mounting."""
-
-    # SECURITY: Start with an empty volumes map
-    volumes = {}
-
-    # 1. Mount ONLY the specific model directory to /workspace
-    volumes[model_home] = {'bind': '/workspace', 'mode': 'rw'}
-
-    # 2. Mount ONLY the global cache to its specific location
-    volumes[GLOBAL_CACHE] = {'bind': '/workspace/global_model_cache', 'mode': 'ro'}
+    """Runs the model in a network-isolated container with resource limits."""
+    # In DooD, we mount the named volume 'ai_workspaces' directly.
+    rel_model_path = os.path.relpath(model_home, WORKSPACE_ROOT)
 
     # Ensure the sandbox can access uploaded files in temp_uploads
     sandbox_user_input = user_input
     if user_input.startswith("temp_uploads/"):
-        input_full_path = os.path.join("/app/media", user_input)
-        # SECURITY: Mount only the single input file to a fixed sandbox path
-        volumes[input_full_path] = {'bind': '/workspace/user_input_file', 'mode': 'ro'}
-        sandbox_user_input = "/workspace/user_input_file"
+        sandbox_user_input = os.path.join("/app/media", user_input)
+
+    volumes = {
+        'ai_workspaces': {'bind': '/workspace', 'mode': 'rw'},
+        'media_data': {'bind': '/app/media', 'mode': 'ro'}
+    }
 
     exec_start = time.time()
     error_code = "SUCCESS"
@@ -149,7 +143,7 @@ def run_model_in_sandbox(model_home, entry_file, user_input):
         container = client.containers.run(
             image="model-sandbox",
             entrypoint=["python", "/sandbox/sandbox_runner.py"], 
-            command=[entry_file, sandbox_user_input],
+            command=[rel_model_path, entry_file, sandbox_user_input],
             volumes=volumes,
             detach=True,
             environment={
@@ -163,7 +157,7 @@ def run_model_in_sandbox(model_home, entry_file, user_input):
             read_only=True,          # SECURITY: Prevent modification of the container root FS
             mem_limit="2g",          # Increased to 2GB to prevent OOM (Exit Code 137)
             nano_cpus=2000000000,    # Increased to 2.0 CPUs for better performance
-            working_dir="/workspace",
+            working_dir=os.path.join("/workspace", rel_model_path),
             tmpfs={'/tmp': ''},      # Allow small temporary writes in RAM
             remove=False             # We need to inspect it before removal
         )
