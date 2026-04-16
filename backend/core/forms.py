@@ -9,9 +9,13 @@ class AIModelForm(forms.ModelForm):
        fields = ["title", "description", "framework", "version", "model_file"] 
  
 class CustomSignupForm(UserCreationForm):
+    role = forms.ChoiceField(choices=[
+        ('consumer', 'Consumer'),
+        ('developer', 'Developer'),
+    ])
+
     class Meta(UserCreationForm.Meta):
         model = User
-        # This adds the 'role' field from your model to the registration form
         fields = UserCreationForm.Meta.fields + ('role',)
 
 class AIServiceForm(forms.ModelForm):
