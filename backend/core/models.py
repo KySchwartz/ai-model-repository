@@ -43,7 +43,11 @@ class AIModel(models.Model):
     is_published = models.BooleanField(default=False)
     
     # These choices allow the system to adapt to any AI service
-    INPUT_CHOICES = [('text', 'Text Input'), ('file', 'File Upload')]
+    INPUT_CHOICES = [
+        ('text', 'Text Input'), 
+        ('file', 'File Upload'),
+        ('custom', 'Custom UI (JSON Config)'),
+    ]
     OUTPUT_CHOICES = [('text', 'Text Result'), ('file', 'File/Image Download')]
     EXT_CHOICES = [
         ('', 'Custom/Detect from Code'),
@@ -60,6 +64,7 @@ class AIModel(models.Model):
     # Service fields
     input_type = models.CharField(max_length=50, choices=INPUT_CHOICES, blank=True, null=True)
     output_type = models.CharField(max_length=50, choices=OUTPUT_CHOICES, blank=True, null=True)
+    ui_config_file = models.FileField(upload_to='ui_configs/', blank=True, null=True)
     output_extension = models.CharField(max_length=10, choices=EXT_CHOICES, default='', blank=True, null=True)
 
     def __str__(self):

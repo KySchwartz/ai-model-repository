@@ -18,7 +18,7 @@ from asgiref.sync import async_to_sync
 import os
 import time
 import ast
-import zipfile
+import zipfile, json
 import io
 import uuid
 
@@ -134,6 +134,17 @@ def model_service_page(request, model_id):
     download_url = None
     response_data = None
     credit_error = False
+    ui_config = None
+
+    # Load Custom UI Config if applicable
+    if service.input_type == 'custom' and service.ui_config_file:
+        try:
+            if os.path.exists(service.ui_config_file.path):
+                with open(service.ui_config_file.path, 'r') as f:
+                    ui_config = json.load(f)
+        except Exception as e:
+            print(f"Error loading UI config: {e}")
+            ui_config = {"error": "Failed to load custom configuration."}
 
     # Permission check for unpublished services
     is_admin = request.user.is_authenticated and (request.user.is_superuser or request.user.role == 'admin')
@@ -181,7 +192,30 @@ def model_service_page(request, model_id):
         input_data = ""
         
         # Check if the service expects a file or text
-        if service.input_type == 'file' and 'user_file' in request.FILES:
+        if service.input_type == 'custom' and ui_config:
+            payload = {}
+            # Iterate through the expected inputs defined in the JSON config
+            for inp in ui_config.get("required_inputs", []):
+                name = inp.get("name")
+                inp_type = inp.get("type")
+                
+                if inp_type == 'file' and name in request.FILES:
+                    uploaded_file = request.FILES[name]
+                    unique_filename = f"{uuid.uuid4().hex}_{uploaded_file.name}"
+                    temp_path = os.path.join(settings.MEDIA_ROOT, 'temp_uploads', unique_filename)
+                    os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+                    
+                    with open(temp_path, 'wb+') as destination:
+                        for chunk in uploaded_file.chunks():
+                            destination.write(chunk)
+                    
+                    payload[name] = f"temp_uploads/{unique_filename}"
+                else:
+                    # Fallback for text, dropdown, number, etc.
+                    payload[name] = request.POST.get(name, "")
+            
+            input_data = payload # Send as a dictionary
+        elif service.input_type == 'file' and 'user_file' in request.FILES:
             uploaded_file = request.FILES['user_file']
             unique_filename = f"{uuid.uuid4().hex}_{uploaded_file.name}"
             # Save the incoming file to a 'temp_uploads' folder in media
@@ -258,7 +292,8 @@ def model_service_page(request, model_id):
         "service": service, 
         "result": result,
         "error_detail": error_detail if 'error_detail' in locals() else None,
-        "download_url": download_url
+        "download_url": download_url,
+        "ui_config": ui_config
         })
 
 # View for account management page
@@ -381,6 +416,20 @@ def upload_service(request):  # Changed from 'async def' to 'def'
                     "form": form,
                     "error_hint": hint
                 })
+
+            # Custom UI validation
+            if form.cleaned_data.get('input_type') == 'custom':
+                ui_file = request.FILES.get('ui_config_file')
+                if not ui_file:
+                    form.add_error('ui_config_file', "Configuration file is required for Custom UI input type.")
+                else:
+                    try:
+                        content = ui_file.read().decode('utf-8')
+                        json.loads(content)
+                        ui_file.seek(0) # Reset pointer for saving
+                    except Exception as e:
+                        form.add_error('ui_config_file', f"Invalid JSON format: {str(e)}")
+                if form.errors: return render(request, "upload_service.html", {"form": form})
 
             model_instance = form.save(commit=False)
             model_instance.developer = request.user

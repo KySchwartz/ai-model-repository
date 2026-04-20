@@ -67,6 +67,7 @@ def get_precise_metrics():
     return {"peak_memory": peak_mem_mb, "cpu_usage": cpu_seconds}
 
 def main():
+    # Expecting: [script_path, model_rel_dir, entry_file_rel, user_input]
     if len(sys.argv) < 4:
         print(json.dumps({"status": "error", "message": "Missing arguments"}))
         return
@@ -86,11 +87,24 @@ def main():
 
     try:
         if not os.path.exists(main_path):
+            # Debugging information to help trace volume mount issues
+            print(f"DEBUG: Root /workspace contents: {os.listdir(model_dir)}")
+            print(f"DEBUG: Attempted to load: {main_path}")
             print(json.dumps({"status": "error", "message": f"File {entry_file_rel} not found"}))
-            return
+            sys.exit(1) # Ensure the orchestrator sees the failure
+
+        # Attempt to parse user_input as JSON for handle_request(dict) compatibility
+        user_input_data = user_input
+        try:
+            if isinstance(user_input, str) and (user_input.startswith('{') or user_input.startswith('[')):
+                user_input_data = json.loads(user_input)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        print(f"DEBUG: Passing input of type {type(user_input_data).__name__} to handle_request")
 
         user_model = load_module("user_model", main_path)
-        result = user_model.handle_request(user_input)
+        result = user_model.handle_request(user_input_data)
         
         if isinstance(result, list):
             processed_data = [process_result_item(i, model_dir) for i in result]

@@ -42,7 +42,29 @@
     <form method="post" enctype="multipart/form-data" onsubmit="return handleSubmit(event)">
         {% csrf_token %}
         
-        {% if service.input_type == 'text' %}
+        {% if service.input_type == 'custom' and ui_config %}
+            {% for input_item in ui_config.required_inputs %}
+                <div style="margin-bottom: 20px;">
+                    <label><strong>{{ input_item.label|default:input_item.name }}:</strong></label>
+                    {% if input_item.type == 'text' %}
+                        <input type="text" name="{{ input_item.name }}" placeholder="{{ input_item.label }}" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ccc; margin-top: 8px; box-sizing: border-box;">
+                    {% elif input_item.type == 'dropdown' %}
+                        <select name="{{ input_item.name }}" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ccc; margin-top: 8px; box-sizing: border-box;">
+                            {% for option in input_item.options %}
+                                <option value="{{ option }}">{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    {% elif input_item.type == 'file' %}
+                        <input type="file" name="{{ input_item.name }}" style="display: block; margin-top: 8px;">
+                    {% elif input_item.type == 'number' %}
+                        <input type="number" name="{{ input_item.name }}" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ccc; margin-top: 8px; box-sizing: border-box;">
+                    {% else %}
+                        <!-- Default fallback to text if type is unknown -->
+                        <input type="text" name="{{ input_item.name }}" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ccc; margin-top: 8px;">
+                    {% endif %}
+                </div>
+            {% endfor %}
+        {% elif service.input_type == 'text' %}
             <label><strong>Enter Text Input:</strong></label>
             <textarea name="user_input" style="width: 100%; height: 150px; margin-top: 10px; border-radius: 8px; border: 1px solid #ccc; padding: 10px; font-family: sans-serif;"></textarea>
         {% else %}
