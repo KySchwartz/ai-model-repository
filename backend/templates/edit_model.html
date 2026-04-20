@@ -54,6 +54,14 @@
             <label>Output Extension</label>
             {{ form.output_extension }}
         </div>
+
+        {% if model.input_type == 'custom' %}
+        <div class="form-field" style="margin-top: 20px;">
+            <label><strong>Edit UI Configuration (JSON)</strong></label>
+            <textarea name="ui_config_content" style="width: 100%; height: 250px; font-family: monospace; padding: 10px; border-radius: 8px; border: 1px solid #ccc; margin-top: 10px; box-sizing: border-box;">{{ ui_config_text }}</textarea>
+            <p style="font-size: 12px; color: #666;">Modify the JSON directly to change the fields of your custom interface without re-uploading the file.</p>
+        </div>
+        {% endif %}
         {% endif %}
 
         <button type="submit" class="btn-primary-full">Save Changes</button>

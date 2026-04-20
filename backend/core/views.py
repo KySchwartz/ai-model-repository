@@ -481,17 +481,40 @@ def edit_ai_model(request, pk):
     # Choose the correct form class
     FormClass = AIServiceForm if model.is_interactive else AIModelForm
 
+    ui_config_text = ""
+    if model.input_type == 'custom' and model.ui_config_file:
+        try:
+            if os.path.exists(model.ui_config_file.path):
+                with open(model.ui_config_file.path, 'r') as f:
+                    ui_config_text = f.read()
+        except Exception as e:
+            print(f"Error reading UI config for edit: {e}")
+
     if request.method == "POST":
         form = FormClass(request.POST, request.FILES, instance=model)
         if form.is_valid():
-            form.save()
+            updated_model = form.save()
+            
+            # If custom input is active, check for manual JSON content updates
+            if updated_model.input_type == 'custom' and 'ui_config_content' in request.POST:
+                json_content = request.POST.get('ui_config_content')
+                try:
+                    # Validate JSON before saving
+                    json.loads(json_content)
+                    if updated_model.ui_config_file:
+                        with open(updated_model.ui_config_file.path, 'w') as f:
+                            f.write(json_content)
+                except json.JSONDecodeError:
+                    messages.error(request, "Invalid JSON structure. Changes to the UI configuration were not saved.")
+            
             return redirect("developer_dashboard")
     else:
         form = FormClass(instance=model)
 
     return render(request, "edit_model.html", {
         "form": form,
-        "model": model
+        "model": model,
+        "ui_config_text": ui_config_text
     })
 
 @user_passes_test(developer_check)
