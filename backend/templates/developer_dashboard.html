@@ -30,6 +30,7 @@
                         <th>Framework</th>
                         <th>Version</th>
                         <th>Uploaded</th>
+                        <th>Status</th>
                         <th class="text-end">Actions</th>
                     </tr>
                 </thead>
@@ -41,9 +42,24 @@
                         <td>{{ model.framework }}</td>
                         <td>{{ model.version }}</td>
                         <td>{{ model.upload_date|date:"M d, Y" }}</td>
+                        <td>
+                            {% if model.is_published %}
+                                <span class="badge bg-success">Published</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Draft</span>
+                            {% endif %}
+                        </td>
 
                         <td class="text-end">
                             <a href="{% url 'edit_ai_model' model.id %}" class="btn btn-sm btn-edit me-2">Edit</a>
+
+                            <a href="{% url 'toggle_publish_status' model.id %}" class="btn btn-sm {% if model.is_published %}btn-warning{% else %}btn-primary{% endif %} me-2">
+                                {% if model.is_published %}
+                                    Hide
+                                {% else %}
+                                    Publish
+                                {% endif %}
+                            </a>
 
                             <a href="{% url 'delete_ai_model' model.id %}"
                                class="btn btn-sm btn-delete"
@@ -74,6 +90,7 @@
                         <th>Input</th>
                         <th>Output</th>
                         <th>Extension</th>
+                        <th>Status</th>
                         <th class="text-end">Actions</th>
                     </tr>
                 </thead>
@@ -85,9 +102,26 @@
                         <td>{{ service.input_type }}</td>
                         <td>{{ service.output_type }}</td>
                         <td>{{ service.output_extension }}</td>
+                        <td>
+                            {% if service.is_published %}
+                                <span class="badge bg-success">Live</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Sandbox</span>
+                            {% endif %}
+                        </td>
 
                         <td class="text-end" style="white-space: nowrap;">
+                            <a href="{% url 'model_service_page' service.id %}" class="btn btn-sm btn-success me-2">Run</a>
+
                             <a href="{% url 'edit_ai_model' service.id %}" class="btn btn-sm btn-edit me-2">Edit</a>
+
+                            <a href="{% url 'toggle_publish_status' service.id %}" class="btn btn-sm {% if service.is_published %}btn-published{% else %}btn-unpublished{% endif %} me-2">
+                                {% if service.is_published %}
+                                    Unpublish
+                                {% else %}
+                                    Publish
+                                {% endif %}
+                            </a>
 
                             <a href="{% url 'delete_ai_model' service.id %}"
                                class="btn btn-sm btn-delete"

@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div style="max-width: 500px; margin: 60px auto; padding: 30px; background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: left;">
+    <h2 style="color: #007BFF; margin-top: 0;">Secure Checkout</h2>
+    <p style="color: #666;">Review your order details before completing the transaction.</p>
+    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+
+    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+        <span>Item:</span>
+        <strong>{{ display_name }}</strong>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-size: 20px; margin-top: 20px; border-top: 2px solid #f8f9fa; padding-top: 15px;">
+        <span>Total Amount:</span>
+        <strong style="color: #28a745;">${{ price }}</strong>
+    </div>
+
+    <form method="POST" action="{% url 'process_payment' %}" style="margin-top: 30px;">
+        {% csrf_token %}
+        <input type="hidden" name="amount" value="{{ amount }}">
+        <input type="hidden" name="purchase_type" value="{{ purchase_type }}">
+        
+        <div style="margin-bottom: 15px;">
+            <label style="display: block; font-size: 14px; color: #555; margin-bottom: 5px;">Card Number (Mock)</label>
+            <input type="text" placeholder="XXXX XXXX XXXX XXXX" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <div style="flex: 2;">
+                <label style="display: block; font-size: 14px; color: #555; margin-bottom: 5px;">Expiry</label>
+                <input type="text" placeholder="MM/YY" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
+            </div>
+            <div style="flex: 1;">
+                <label style="display: block; font-size: 14px; color: #555; margin-bottom: 5px;">CVV</label>
+                <input type="text" placeholder="XXX" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
+            </div>
+        </div>
+
+        <button type="submit" style="width: 100%; background: #28a745; color: white; border: none; padding: 15px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold;">
+            Complete Purchase
+        </button>
+        <a href="{% url 'account_management' %}" style="display: block; text-align: center; margin-top: 15px; color: #666; font-size: 14px; text-decoration: none;">Cancel and Go Back</a>
+    </form>
+</div>
+{% endblock %}

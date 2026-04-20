@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib import messages
 from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
 from django.db.models import Q
@@ -9,6 +10,8 @@ from .forms import AIModelForm
 from .forms import AIServiceForm
 from .ai_client import get_ai_status
 from .ai_client import validate_model_with_ai
+from django.utils import timezone
+from datetime import timedelta
 import httpx
 from asgiref.sync import sync_to_async
 from asgiref.sync import async_to_sync
@@ -17,6 +20,7 @@ import time
 import ast
 import zipfile
 import io
+import uuid
 
 def developer_check(user):
     """Check if the user has Developer or Admin privileges."""
@@ -101,7 +105,18 @@ def model_list(request):
 # View for AI Services
 def ai_service_catalog(request):
     query = request.GET.get('q', '')
-    services = AIModel.objects.filter(is_interactive=True).order_by('-upload_date')
+    
+    if request.user.is_authenticated:
+        # Admins see everything. Developers see published models OR their own unpublished ones.
+        if request.user.role == 'admin' or request.user.is_superuser:
+            services = AIModel.objects.filter(is_interactive=True)
+        else:
+            services = AIModel.objects.filter(is_interactive=True).filter(Q(is_published=True) | Q(developer=request.user))
+    else:
+        # Anonymous users only see published
+        services = AIModel.objects.filter(is_interactive=True, is_published=True).order_by('-upload_date')
+
+    services = services.order_by('-upload_date')
 
     if query:
         services = services.filter(
@@ -118,16 +133,59 @@ def model_service_page(request, model_id):
     result = None
     download_url = None
     response_data = None
+    credit_error = False
+
+    # Permission check for unpublished services
+    is_admin = request.user.is_authenticated and (request.user.is_superuser or request.user.role == 'admin')
+    is_dev_of_model = request.user.is_authenticated and service.developer == request.user
+    if not service.is_published and not (is_admin or is_dev_of_model):
+        return redirect('service_catalog')
+
+    # Logic for managing user credits (monetization demo)
+    if request.user.is_authenticated:
+        now = timezone.now()
+        
+        # Check if subscription has expired
+        if request.user.is_subscribed and request.user.subscription_expiry:
+            if now > request.user.subscription_expiry:
+                request.user.is_subscribed = False
+                request.user.save()
+
+        if (now - request.user.last_credit_refresh).total_seconds() >= 86400:
+            # Reset total balance to Purchased + 5 (replenishing allowance without stacking)
+            request.user.credit_balance = request.user.purchased_credits + 5
+            request.user.last_credit_refresh = now
+            request.user.save()
 
     if request.method == "POST":
+        # Check if the user has the credit to run a model
+        can_run = False
+        if not request.user.is_authenticated:
+            return redirect('login')
+            
+        # Determine if user is exempt from credit limits
+        
+        if is_admin or request.user.is_subscribed or is_dev_of_model:
+            can_run = True
+        elif request.user.credit_balance > 0:
+            can_run = True
+        
+        if not can_run:
+            return render(request, "model_service.html", {
+                "service": service,
+                "result": "You have run out of credits.",
+                "credit_error": True
+            })
+
         start_time = time.time()
         input_data = ""
         
         # Check if the service expects a file or text
         if service.input_type == 'file' and 'user_file' in request.FILES:
             uploaded_file = request.FILES['user_file']
+            unique_filename = f"{uuid.uuid4().hex}_{uploaded_file.name}"
             # Save the incoming file to a 'temp_uploads' folder in media
-            temp_path = os.path.join(settings.MEDIA_ROOT, 'temp_uploads', uploaded_file.name)
+            temp_path = os.path.join(settings.MEDIA_ROOT, 'temp_uploads', unique_filename)
             os.makedirs(os.path.dirname(temp_path), exist_ok=True)
             
             with open(temp_path, 'wb+') as destination:
@@ -135,7 +193,7 @@ def model_service_page(request, model_id):
                     destination.write(chunk)
             
             # We pass the path of the Excel file to FastAPI instead of raw text
-            input_data = f"temp_uploads/{uploaded_file.name}"
+            input_data = f"temp_uploads/{unique_filename}"
         else:
             input_data = request.POST.get("user_input", "")
 
@@ -164,6 +222,15 @@ def model_service_page(request, model_id):
             if response_data.get("status") == "success":
                 result = response_data.get("message")
                 download_url = response_data.get("download_url")
+                
+                # Added logic for credit manipulation
+                # Deduct credit on successful run (if not exempt)
+                if not (request.user.is_superuser or request.user.is_subscribed or service.developer == request.user):
+                    request.user.credit_balance -= 1
+                    # If total balance drops below purchased amount, update the purchased anchor
+                    if request.user.credit_balance < request.user.purchased_credits:
+                        request.user.purchased_credits = request.user.credit_balance
+                    request.user.save()
             else:
                 result = f"Error: {response_data.get('message')}"
             
@@ -193,6 +260,73 @@ def model_service_page(request, model_id):
         "error_detail": error_detail if 'error_detail' in locals() else None,
         "download_url": download_url
         })
+
+# View for account management page
+@login_required
+def account_management(request):
+    return render(request, "account_management.html", {
+        "user": request.user,
+        "days_until_refresh": 1 - (timezone.now() - request.user.last_credit_refresh).days
+    })
+
+# View for checkout page
+@login_required
+def checkout_view(request):
+    if request.method == "POST":
+        purchase_type = request.POST.get("purchase_type", "credits")
+        
+        if purchase_type == "subscription":
+            amount = 1
+            price = 11.99
+            display_name = "Monthly Premium Subscription (Unlimited Usage)"
+        else:
+            amount = int(request.POST.get("credit_amount", 50))
+            price = amount * 0.10
+            display_name = f"{amount} AI Service Credits"
+            
+        return render(request, "checkout.html", {
+            "amount": amount,
+            "price": f"{price:.2f}",
+            "purchase_type": purchase_type,
+            "display_name": display_name
+        })
+    return redirect("account_management")
+
+@login_required
+def process_payment(request):
+    if request.method == "POST":
+        amount = int(request.POST.get("amount", 0))
+        purchase_type = request.POST.get("purchase_type")
+
+        if purchase_type == "subscription":
+            request.user.is_subscribed = True
+            request.user.subscription_expiry = timezone.now() + timedelta(days=30)
+            request.user.save()
+            messages.success(request, "Your Premium Subscription is now active for 30 days!")
+        elif amount > 0:
+            request.user.purchased_credits += amount
+            request.user.credit_balance += amount
+            request.user.save()
+            messages.success(request, f"Successfully purchased {amount} credits!")
+            return redirect("account_management")
+    
+    return redirect("account_management")
+
+@user_passes_test(developer_check)
+def toggle_publish_status(request, model_id):
+    # Allow admins to toggle any service, but restrict developers to their own
+    if request.user.is_superuser or request.user.role == 'admin':
+        service = get_object_or_404(AIModel, id=model_id)
+    else:
+        service = get_object_or_404(AIModel, id=model_id, developer=request.user)
+
+    service.is_published = not service.is_published
+    service.save()
+    status = "published" if service.is_published else "hidden"
+    messages.success(request, f"Service '{service.title}' is now {status}.")
+    
+    # Redirect back to the referring page (e.g., catalog or dashboard) for better UX
+    return redirect(request.META.get('HTTP_REFERER', 'developer_dashboard'))
 
 # Renders the home page
 async def home(request):

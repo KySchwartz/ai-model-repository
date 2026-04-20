@@ -30,6 +30,15 @@
     <p><strong>Framework:</strong> {{ service.framework }} | <strong>Version:</strong> {{ service.version }}</p>
     <hr>
 
+    {% if credit_error %}
+        <div style="background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold;">
+            ⚠️ Out of Credits! 
+            <p style="font-weight: normal; margin: 5px 0 0 0;">
+                You have exhausted your daily credits. <a href="{% url 'account_management' %}" style="color: #856404; text-decoration: underline;">Purchase more credits or subscribe</a> to continue using AI services.
+            </p>
+        </div>
+    {% endif %}
+
     <form method="post" enctype="multipart/form-data" onsubmit="return handleSubmit(event)">
         {% csrf_token %}
         

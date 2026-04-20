@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div style="max-width: 400px; margin: 50px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); color: #222;">
+<div class="login-signup-div">
     <h2 style="text-align: center; color: #007BFF;">Join the Repository</h2>
     <p style="text-align: center; color: #666; font-size: 14px;">Select your role to get started.</p>
     
-    <form method="post" style="display: flex; flex-direction: column; gap: 15px;">
+    <form method="post" class="login-signup-form">
         {% csrf_token %}
         
         {% for field in form %}
@@ -21,12 +21,12 @@
             </div>
         {% endfor %}
         
-        <button type="submit" style="background-color: #007BFF; color: white; padding: 12px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 10px;">
+        <button type="submit" class="log-sign-btn">
             Create Account
         </button>
     </form>
     
-    <p style="text-align: center; margin-top: 20px; font-size: 14px;">
+    <p class="bottom-question-p">
         Already have an account? <a href="{% url 'login' %}" style="color: #007BFF; text-decoration: none;">Login here</a>
     </p>
 </div>

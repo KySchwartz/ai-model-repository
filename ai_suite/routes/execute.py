@@ -125,7 +125,7 @@ def run_model_in_sandbox(model_home, entry_file, user_input):
     """Runs the model in a network-isolated container with resource limits."""
     # In DooD, we mount the named volume 'ai_workspaces' directly.
     rel_model_path = os.path.relpath(model_home, WORKSPACE_ROOT)
-    
+
     # Ensure the sandbox can access uploaded files in temp_uploads
     sandbox_user_input = user_input
     if user_input.startswith("temp_uploads/"):
@@ -327,9 +327,10 @@ async def execute_model(request: ExecutionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 def handle_file_output(text, model_id, extension, model_home=None):
+    unique_id = uuid.uuid4().hex
     # Handle cases where the model returns multiple files
     if isinstance(text, list):
-        zip_name = f"output_{model_id}.zip"
+        zip_name = f"output_{model_id}_{unique_id}.zip"
         zip_path = f"/app/media/temp_uploads/{zip_name}"
         os.makedirs(os.path.dirname(zip_path), exist_ok=True)
         
@@ -346,7 +347,7 @@ def handle_file_output(text, model_id, extension, model_home=None):
         }
 
     ext = (extension or ".txt").lower()
-    file_name = f"output_{model_id}{ext}"
+    file_name = f"output_{model_id}_{unique_id}{ext}"
     save_path = f"/app/media/temp_uploads/{file_name}"
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
@@ -358,7 +359,7 @@ def handle_file_output(text, model_id, extension, model_home=None):
             # If the dev created a file with a specific extension, respect it over the default
             _, actual_ext = os.path.splitext(potential_file)
             if actual_ext and actual_ext.lower() != ext:
-                file_name = f"output_{model_id}{actual_ext.lower()}"
+                file_name = f"output_{model_id}_{unique_id}{actual_ext.lower()}"
                 save_path = os.path.join(os.path.dirname(save_path), file_name)
 
             shutil.copy(potential_file, save_path)

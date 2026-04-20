@@ -40,12 +40,16 @@ urlpatterns = [
     path("signup/", views.signup_view, name="signup"),
     path('login/', auth_views.LoginView.as_view(template_name='login.html'), name='login'), 
     path('logout/', auth_views.LogoutView.as_view(), name='logout'), 
+    path("account/", views.account_management, name="account_management"),
+    path("account/checkout/", views.checkout_view, name="checkout"),
+    path("account/process-payment/", views.process_payment, name="process_payment"),
 
     # Developer Paths
     path("developer/dashboard/", views.developer_dashboard, name="developer_dashboard"),
     path("developer/models/<int:pk>/edit/", views.edit_ai_model, name="edit_ai_model"),
     path("developer/models/<int:pk>/delete/", views.delete_ai_model, name="delete_ai_model"),
     path("developer/models/<int:model_id>/usage/", views.model_usage_stats, name="model_usage_stats"),
+    path("developer/models/<int:model_id>/publish/", views.toggle_publish_status, name="toggle_publish_status"),
 
     #Admin Path
     path('admin/', admin.site.urls),
