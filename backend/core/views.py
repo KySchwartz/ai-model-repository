@@ -142,6 +142,14 @@ def model_service_page(request, model_id):
             if os.path.exists(service.ui_config_file.path):
                 with open(service.ui_config_file.path, 'r') as f:
                     ui_config = json.load(f)
+                    # Normalize inputs for template consistency and to prevent lookup errors
+                    if isinstance(ui_config, dict) and "required_inputs" in ui_config:
+                        for inp in ui_config["required_inputs"]:
+                            # Ensure we have a consistent ID and Label for the template engine
+                            rid = inp.get("id") or inp.get("name")
+                            inp["resolved_id"] = rid
+                            if "label" not in inp:
+                                inp["label"] = rid
         except Exception as e:
             print(f"Error loading UI config: {e}")
             ui_config = {"error": "Failed to load custom configuration."}
@@ -196,11 +204,11 @@ def model_service_page(request, model_id):
             payload = {}
             # Iterate through the expected inputs defined in the JSON config
             for inp in ui_config.get("required_inputs", []):
-                name = inp.get("name")
+                input_id = inp.get("id") or inp.get("name")
                 inp_type = inp.get("type")
                 
-                if inp_type == 'file' and name in request.FILES:
-                    uploaded_file = request.FILES[name]
+                if inp_type == 'file' and input_id in request.FILES:
+                    uploaded_file = request.FILES[input_id]
                     unique_filename = f"{uuid.uuid4().hex}_{uploaded_file.name}"
                     temp_path = os.path.join(settings.MEDIA_ROOT, 'temp_uploads', unique_filename)
                     os.makedirs(os.path.dirname(temp_path), exist_ok=True)
@@ -209,10 +217,10 @@ def model_service_page(request, model_id):
                         for chunk in uploaded_file.chunks():
                             destination.write(chunk)
                     
-                    payload[name] = f"temp_uploads/{unique_filename}"
+                    payload[input_id] = f"temp_uploads/{unique_filename}"
                 else:
                     # Fallback for text, dropdown, number, etc.
-                    payload[name] = request.POST.get(name, "")
+                    payload[input_id] = request.POST.get(input_id, "")
             
             input_data = payload # Send as a dictionary
         elif service.input_type == 'file' and 'user_file' in request.FILES:
