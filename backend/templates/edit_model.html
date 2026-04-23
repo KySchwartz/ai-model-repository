@@ -20,6 +20,18 @@
         </div>
 
         <div class="form-field">
+            <label>Service Thumbnail Image</label>
+            {% if model.image %}
+                <div style="margin-bottom: 10px;">
+                    <img src="{{ model.image.url }}" alt="Current" style="width: 100px; height: 100px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd;">
+                    <p style="font-size: 12px; color: #666;">Current Image</p>
+                </div>
+            {% endif %}
+            {{ form.image }}
+            <p style="font-size: 12px; color: #888;">Upload a new image to represent this service in the catalog.</p>
+        </div>
+
+        <div class="form-field">
             <label>Framework</label>
             {{ form.framework }}
         </div>

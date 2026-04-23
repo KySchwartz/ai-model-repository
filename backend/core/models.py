@@ -36,6 +36,7 @@ class AIModel(models.Model):
     framework = models.CharField(max_length=50)
     version = models.CharField(max_length=10, default="1.0.0")
     model_file = models.FileField(upload_to='models/')
+    image = models.ImageField(upload_to='service_images/', blank=True, null=True)
     upload_date = models.DateTimeField(auto_now_add=True)
     
     # Flexible service fields
