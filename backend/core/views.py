@@ -143,8 +143,9 @@ def model_service_page(request, model_id):
                 with open(service.ui_config_file.path, 'r') as f:
                     ui_config = json.load(f)
                     # Normalize inputs for template consistency and to prevent lookup errors
-                    if isinstance(ui_config, dict) and "required_inputs" in ui_config:
-                        for inp in ui_config["required_inputs"]:
+                    inputs_list = ui_config.get("required_inputs") or ui_config.get("inputs")
+                    if isinstance(ui_config, dict) and inputs_list:
+                        for inp in inputs_list:
                             # Ensure we have a consistent ID and Label for the template engine
                             rid = inp.get("id") or inp.get("name")
                             inp["resolved_id"] = rid
@@ -202,8 +203,9 @@ def model_service_page(request, model_id):
         # Check if the service expects a file or text
         if service.input_type == 'custom' and ui_config:
             payload = {}
-            # Iterate through the expected inputs defined in the JSON config
-            for inp in ui_config.get("required_inputs", []):
+            # Support both 'required_inputs' and 'inputs' keys for flexibility
+            inputs_list = ui_config.get("required_inputs") or ui_config.get("inputs", [])
+            for inp in inputs_list:
                 input_id = inp.get("id") or inp.get("name")
                 inp_type = inp.get("type")
                 
@@ -468,8 +470,9 @@ def developer_dashboard(request):
     user_models = AIModel.objects.filter(developer=request.user)
 
     # Optional: split into "models" and "services" for UI clarity
-    ai_models = user_models.filter(is_interactive=False)
-    ai_services = user_models.filter(is_interactive=True)
+    # Order by upload_date (newest first) to prevent reordering when publish status changes
+    ai_models = user_models.filter(is_interactive=False).order_by('-upload_date')
+    ai_services = user_models.filter(is_interactive=True).order_by('-upload_date')
 
     return render(request, "developer_dashboard.html", {
         "ai_models": ai_models,

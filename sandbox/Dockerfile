@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir torch torchvision --index-url https://download.py
 RUN pip install --no-cache-dir tensorflow-cpu
 RUN pip install --no-cache-dir scikit-learn scikit-image pandas numpy Pillow ipython transformers huggingface_hub
 RUN pip install --no-cache-dir python-docx fpdf opencv-python-headless
+RUN pip install --no-cache-dir llama-cpp-python
 
 # Install app-specific requirements
 COPY requirements.txt .

@@ -90,6 +90,7 @@
                         <th>Input</th>
                         <th>Output</th>
                         <th>Extension</th>
+                        <th>Uploaded</th>
                         <th>Status</th>
                         <th class="text-end">Actions</th>
                     </tr>
@@ -102,6 +103,7 @@
                         <td>{{ service.input_type }}</td>
                         <td>{{ service.output_type }}</td>
                         <td>{{ service.output_extension }}</td>
+                        <td>{{ service.upload_date|date:"M d, Y" }}</td>
                         <td>
                             {% if service.is_published %}
                                 <span class="badge bg-success">Live</span>
