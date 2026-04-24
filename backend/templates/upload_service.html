@@ -123,6 +123,10 @@ def handle_request(input_data):
                     • Pillow / scikit-image
                 </div>
                 <div>
+                    <strong>LLM Libraries:</strong><br>
+                    • llama-cpp-python<br>
+                </div>
+                <div>
                     <strong>Documents/Misc:</strong><br>
                     • python-docx / fpdf<br>
                     • ipython
@@ -156,6 +160,55 @@ def handle_request(input_data):
                     </tr>
                 </tbody>
             </table>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px;">
+                <thead>
+                    <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6; text-align: left;">
+                        <th style="padding: 10px;">Output Type</th>
+                        <th style="padding: 10px;">What your user receives</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px;"><strong>Code Produces Multiple Outputs</strong></td>
+                        <td style="padding: 10px;">All output files are compiled into a zip folder</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div style="line-height: 1.6; color: #444; text-align: center;"> 
+            <h5 style="color: #333; margin-bottom: 10px;">Developing a custom UI for multiple inputs></h5>
+            <p style="font-size: 14px;">If your code requires more than one input or if you would like to provide extra labeled input options for your agent, you will need to send each input as a named variable. 
+                You may copy the below JSON file and tailor it to your needs. 
+                If no UI displays while testing the system, please verify that the JSON names are typed exact as the system expects tags such as "required_inputs" or "name" to be able to generate the UI.</p> 
+            
+            <pre style="background: #272822; color: #f8f8f2; padding: 15px; border-radius: 5px; font-size: 13px; overflow-x: auto; text-align: left; margin-left: auto; max-width: 100%; box-sizing: border-box;">
+{
+"model_name": "Example-Custom-UI-JSON",
+"required_inputs": [
+{"name": "name_of_your_variable_1", "type": "text", "label": "example_label_text"},
+{"name": "name_of_your_variable_2", "type": "dropdown", "options": ["ExampleOption1", "ExampleOption1", "ExampleOption1"]},
+{"name": "name_of_your_variable_3", "type": "number", "label": "label_example_text", "default": 5}
+]
+}
+            </pre>
+            <h5 style="color: #333; margin-bottom: 10px;">Managing <code>handle_request</code> for multiple inputs</h5> 
+            <p style="font-size: 14px;">If your code requires more than one input or if you would like to provide extra labeled input options for your agent, you will need to send each input as a named variable. 
+                You may copy the below JSON file and tailor it to your needs. 
+                If no UI displays while testing the system, please verify that the JSON names are typed exact as the system expects tags such as "required_inputs" or "name" to be able to generate the UI.</p> 
+            
+            <pre style="background: #272822; color: #f8f8f2; padding: 15px; border-radius: 5px; font-size: 13px; overflow-x: auto; text-align: left; margin-left: auto; max-width: 100%; box-sizing: border-box;">
+def handle_request(user_input: dict) -> dict:
+    # Map your variables from the platform to your code
+    name_of_your_variable_1 = user_input.get("name_of_your_variable_1", "default_value")
+    name_of_your_variable_2 = user_input.get("name_of_your_variable_2", "default_value")
+    name_of_your_variable_3 = user_input.get("name_of_your_variable_3", "default_value")
+
+    # Rest of code
+
+    
+    return output
+            </pre>
+            </div>
         </div>
 
         <button onclick="toggleModal(false)" style="width: 100%; background: #007BFF; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px;" ...>Got it!</button>
