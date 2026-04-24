@@ -11,6 +11,38 @@ def load_module(module_name, file_path):
     spec.loader.exec_module(module)
     return module
 
+def extract_text_content(path):
+    """Helper to extract text from common document formats for handle_request."""
+    try:
+        filename = path.lower()
+        if filename.endswith('.docx'):
+            import docx
+            doc = docx.Document(path)
+            return "\n".join([p.text for p in doc.paragraphs])
+        elif filename.endswith('.pdf'):
+            import fitz
+            doc = fitz.open(path)
+            return "\n".join([page.get_text() for page in doc])
+        elif filename.endswith('.txt'):
+            with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                return f.read()
+    except Exception as e:
+        print(f"DEBUG: Failed to extract text from {path}: {e}")
+    return None
+
+def process_input_data(data):
+    """Recursively scan input data to extract text from document paths."""
+    if isinstance(data, dict):
+        return {k: process_input_data(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [process_input_data(i) for i in data]
+    elif isinstance(data, str) and data.startswith("/app/media/temp_uploads/"):
+        extracted = extract_text_content(data)
+        if extracted is not None:
+            print(f"DEBUG: Extracted text content from {data}. Length: {len(extracted)}")
+            return extracted
+    return data
+
 def process_result_item(item, model_dir):
     """Helper to process a single output item from handle_request."""
     # Handle PIL Images
@@ -67,6 +99,7 @@ def get_precise_metrics():
     return {"peak_memory": peak_mem_mb, "cpu_usage": cpu_seconds}
 
 def main():
+    # Expecting: [script_path, model_rel_dir, entry_file_rel, user_input]
     if len(sys.argv) < 4:
         print(json.dumps({"status": "error", "message": "Missing arguments"}))
         return
@@ -86,16 +119,35 @@ def main():
 
     try:
         if not os.path.exists(main_path):
+            # Debugging information to help trace volume mount issues
+            print(f"DEBUG: Root /workspace contents: {os.listdir(model_dir)}")
+            print(f"DEBUG: Attempted to load: {main_path}")
             print(json.dumps({"status": "error", "message": f"File {entry_file_rel} not found"}))
-            return
+            sys.exit(1) # Ensure the orchestrator sees the failure
+
+        # Attempt to parse user_input as JSON for handle_request(dict) compatibility
+        user_input_data = user_input
+        try:
+            if isinstance(user_input, str) and (user_input.startswith('{') or user_input.startswith('[')):
+                user_input_data = json.loads(user_input)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Recursively resolve any file paths into their text content (for documents)
+        user_input_data = process_input_data(user_input_data)
+
+        print(f"DEBUG: Passing input of type {type(user_input_data).__name__} to handle_request")
 
         user_model = load_module("user_model", main_path)
-        result = user_model.handle_request(user_input)
+        print(f"DEBUG: Calling handle_request from {main_path} with input: {user_input_data}", flush=True)
+        result = user_model.handle_request(user_input_data)
+        print(f"DEBUG: handle_request returned type {type(result).__name__}, value: {result}", flush=True)
         
         if isinstance(result, list):
             processed_data = [process_result_item(i, model_dir) for i in result]
         else:
             processed_data = process_result_item(result, model_dir)
+        print(f"DEBUG: processed_data is type {type(processed_data).__name__}, value: {processed_data}", flush=True)
 
         # Capture precise resource usage from the kernel before exiting
         metrics = get_precise_metrics()

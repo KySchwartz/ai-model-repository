@@ -24,6 +24,13 @@
                     {{ field }}
                     <p style="font-size: 12px; color: #555;">Choose the format the AI should generate for the user.</p>
                 </div>
+            {% elif field.name == 'ui_config_file' %}
+                <div id="ui-config-wrapper" style="margin-bottom: 15px; padding: 10px; background: #fff8e1; border-radius: 8px; border: 1px solid #ffe082; display: none;">
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">{{ field.label }}</label>
+                    {{ field }}
+                    <p style="font-size: 12px; color: #666;">Upload a JSON file to define your custom user interface.</p>
+                    {% for error in field.errors %}<p style="color: #dc3545; font-size: 13px; margin: 4px 0;">{{ error }}</p>{% endfor %}
+                </div>
             {% else %}
                 <div style="margin-bottom: 15px;">
                     <label style="font-weight: bold; display: block; margin-bottom: 5px;">{{ field.label }}</label>
@@ -45,21 +52,24 @@
 </div>
 
 <script>
-    // Logic to show/hide the extension dropdown
+    // Logic to show/hide conditional fields based on selection
     const outputTypeField = document.querySelector('select[name="output_type"]');
+    const inputTypeField = document.querySelector('select[name="input_type"]');
     const extensionWrapper = document.getElementById('extension-wrapper');
+    const uiConfigWrapper = document.getElementById('ui-config-wrapper');
 
-    function toggleExtension() {
-        if (outputTypeField.value === 'file') {
-            extensionWrapper.style.display = 'block';
-        } else {
-            extensionWrapper.style.display = 'none';
-        }
+    function updateVisibility() {
+        // Handle Output Extension visibility
+        if (extensionWrapper) extensionWrapper.style.display = (outputTypeField.value === 'file') ? 'block' : 'none';
+        
+        // Handle Custom UI Config visibility
+        if (uiConfigWrapper) uiConfigWrapper.style.display = (inputTypeField.value === 'custom') ? 'block' : 'none';
     }
 
-    // Run on change and on initial page load
-    outputTypeField.addEventListener('change', toggleExtension);
-    window.onload = toggleExtension;
+    outputTypeField.addEventListener('change', updateVisibility);
+    inputTypeField.addEventListener('change', updateVisibility);
+
+    window.onload = updateVisibility;
 
     // Independent Modal Controller
     function toggleModal(show) {

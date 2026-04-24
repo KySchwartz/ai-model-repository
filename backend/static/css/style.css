@@ -72,6 +72,14 @@
     border-radius: 8px;
 }
 
+.service-status {
+color: white; padding: 4px 10px; border-radius: 20px;
+font-size: 10px; font-weight: bold; text-transform: uppercase;
+text-decoration: none;
+}
+.published { background: #28a745; }
+.unpublished { background: #dc3545; }
+
 /* Header Colors */
 .card-header-models {
     background: #0d6efd;
@@ -165,3 +173,4 @@
     margin-top: 10px;
     font-size: 1rem;
 }
+
