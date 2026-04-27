@@ -2,12 +2,14 @@ from django import forms
 from .models import AIModel 
 from django.contrib.auth.forms import UserCreationForm
 from .models import User
- 
+
+# Form to upload an AI model
 class AIModelForm(forms.ModelForm): 
    class Meta: 
        model = AIModel 
        fields = ["title", "description", "framework", "version", "model_file"] 
- 
+
+# Form to create an account on the platform
 class CustomSignupForm(UserCreationForm):
     role = forms.ChoiceField(choices=[
         ('consumer', 'Consumer'),
@@ -18,6 +20,7 @@ class CustomSignupForm(UserCreationForm):
         model = User
         fields = UserCreationForm.Meta.fields + ('role',)
 
+# Form to upload AI agents
 class AIServiceForm(forms.ModelForm):
     class Meta:
         model = AIModel

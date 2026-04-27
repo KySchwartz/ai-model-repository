@@ -17,7 +17,6 @@ class AIModelAdmin(admin.ModelAdmin):
     search_fields = ('title', 'framework')
     # This adds a filter sidebar
     list_filter = ('framework', 'upload_date')
-
     # Add additional actions for AI models
     actions = ["clean_orphaned_model_files", "run_cleanup_outputs"]
 

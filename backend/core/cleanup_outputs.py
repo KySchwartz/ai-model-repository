@@ -3,6 +3,8 @@ import time
 from django.core.management.base import BaseCommand
 from django.conf import settings
 
+# Avoids storing temporary user outputs for extended periods
+# Removes all temporary files every 24 hours
 class Command(BaseCommand):
     help = 'Cleans up temporary files in temp_uploads older than 24 hours'
 

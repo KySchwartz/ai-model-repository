@@ -27,6 +27,7 @@ def developer_check(user):
     return user.is_authenticated and (user.role in ['developer', 'admin'] or user.is_superuser)
 
 def validate_contract_in_zip(zip_file, input_type="text"):
+    """Ensure the developer code has a handle_request(user_input) function"""
     try:
         with zipfile.ZipFile(zip_file, 'r') as z:
             py_files = [f for f in z.namelist() if f.endswith('.py') and not f.startswith('__MACOSX')]
@@ -184,7 +185,6 @@ def model_service_page(request, model_id):
             return redirect('login')
             
         # Determine if user is exempt from credit limits
-        
         if is_admin or request.user.is_subscribed or is_dev_of_model:
             can_run = True
         elif request.user.credit_balance > 0:
@@ -241,7 +241,7 @@ def model_service_page(request, model_id):
         else:
             input_data = request.POST.get("user_input", "")
 
-        # Now call FastAPI (same as before, but 'user_input' might now be a file path)
+        # Call FastAPI 'user_input' may be a file path
         try:
             async def call_ai_suite():
                 async with httpx.AsyncClient() as client:
@@ -337,6 +337,7 @@ def checkout_view(request):
         })
     return redirect("account_management")
 
+# Demo for processing payment (DEMO ONLY DOES NOT ACCEPT REAL MONEY)
 @login_required
 def process_payment(request):
     if request.method == "POST":
@@ -357,6 +358,7 @@ def process_payment(request):
     
     return redirect("account_management")
 
+# Restricts access to AI models in the catelog until they are published
 @user_passes_test(developer_check)
 def toggle_publish_status(request, model_id):
     # Allow admins to toggle any service, but restrict developers to their own
@@ -464,6 +466,7 @@ def upload_service(request):  # Changed from 'async def' to 'def'
     
     return render(request, "upload_service.html", {"form": form})
 
+# Developer view to manage AI models
 @user_passes_test(developer_check)
 def developer_dashboard(request):
     # Only show the logged-in developer's models

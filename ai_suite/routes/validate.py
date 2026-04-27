@@ -8,9 +8,10 @@ class ValidationRequest(BaseModel):
     version: str
     file_name: str
 
+# Ensure the selected input type is allowed on the platform
 @router.post("/validate")
 async def validate_model(request: ValidationRequest):
-    allowed_exts = ('.json', '.pkl', '.bst', '.h5', '.txt', '.xlsx', '.docx', '.py', '.zip')
+    allowed_exts = ('.py', '.zip')
 
     if not request.file_name.lower().endswith(allowed_exts):
         return {"status": "invalid", "message": "Unsupported file extension for this platform."}

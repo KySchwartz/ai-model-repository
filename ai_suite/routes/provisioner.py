@@ -20,6 +20,7 @@ HF_REPO_RE = r'["\']([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)["\']'
 # Common single-word model IDs that don't have slashes
 COMMON_MODELS = {"gpt2", "t5-small", "t5-base", "t5-large", "bert-base-uncased", "distilgpt2"}
 
+# Scan the code for any lines that import dependencies over the internet
 def scan_for_dependencies(workspace_path):
     """
     Recursively scans the project for model dependencies,
@@ -50,7 +51,6 @@ def scan_for_dependencies(workspace_path):
                         content = f.read()
                         
                         # 1. Broad scan for "namespace/repo" strings anywhere in the file
-                        # This catches variables: model_id = "facebook/bart-large-cnn"
                         repo_matches = re.findall(HF_REPO_RE, content)
                         for match in repo_matches:
                             # Filter out false positives (MIME types, paths, URLs)
