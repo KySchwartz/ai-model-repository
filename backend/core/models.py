@@ -5,6 +5,7 @@ from django.db.models.signals import post_delete
 from django.db.models.signals import pre_save
 from django.utils import timezone
 
+# Defines user roles and data
 class User(AbstractUser):
 
     ROLE_CHOICES = (
@@ -28,6 +29,7 @@ class User(AbstractUser):
             self.is_superuser = True
         super().save(*args, **kwargs)
 
+# AI model and agent data stored in the database
 class AIModel(models.Model):
     # Existing fields
     developer = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -69,12 +71,14 @@ class AIModel(models.Model):
 
     def __str__(self):
         return self.title
- 
+
+# Deletes the old agent code from the platform
 @receiver(post_delete, sender=AIModel)
 def delete_model_file(sender, instance, **kwargs):
     if instance.model_file:
         instance.model_file.delete(save=False)
 
+# Lets users edit their exisiting agent code
 @receiver(pre_save, sender=AIModel)
 def replace_model_file(sender, instance, **kwargs):
     if not instance.pk:

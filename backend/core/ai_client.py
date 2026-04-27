@@ -2,13 +2,15 @@ import httpx
 
 AI_SUITE_URL = "http://ai_suite:8001"
 
+# Simple call to ensure the ai_suite is returning a response
 async def get_ai_status():
     # 'ai_suite' is the name we gave the container in docker-compose.yml
     # Port 8001 is where FastAPI is listening
     async with httpx.AsyncClient() as client:
         response = await client.get(f"{AI_SUITE_URL}/status")
         return response.json()
-    
+
+# Validates the file type of the uploaded model code
 async def validate_model_with_ai(framework, version, file_name):
     try:
         async with httpx.AsyncClient() as client:

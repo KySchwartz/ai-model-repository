@@ -304,7 +304,7 @@ async def execute_model(request: ExecutionRequest):
         smart_pip_install(request.model_id, model_home)
         init_time = time.time() - init_start
 
-        # 4. Run (using the restored mount strategy)
+        # 4. Run by mounting the volumes to the Sandbox
         result_json = run_model_in_sandbox(model_home, entry_file, request.user_input)
         
         # Calculate input size safely based on input type
